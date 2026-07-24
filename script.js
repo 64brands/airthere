@@ -26,26 +26,35 @@ contactForm.addEventListener("submit", (event) => {
     return;
   }
 
-  const formData = new FormData(contactForm);
-  const name = formData.get("name");
-  const company = formData.get("company");
-  const email = formData.get("email");
-  const phone = formData.get("phone");
-  const project = formData.get("project");
+  const submitButton = contactForm.querySelector('button[type="submit"]');
+  const formData = Object.fromEntries(new FormData(contactForm));
 
-  const subject = `AirThere project enquiry — ${company || name}`;
-  const body = [
-    `Name: ${name}`,
-    `Company: ${company || "Not provided"}`,
-    `Email: ${email}`,
-    `Phone: ${phone || "Not provided"}`,
-    "",
-    "Project details:",
-    project,
-  ].join("\n");
+  submitButton.disabled = true;
+  submitButton.textContent = "Sending…";
+  formStatus.textContent = "";
 
-  formStatus.textContent = "Opening your email app with your enquiry ready to send…";
-  window.location.href =
-    `mailto:data@airthere.com.au?subject=${encodeURIComponent(subject)}` +
-    `&body=${encodeURIComponent(body)}`;
+  fetch("/api/contact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(formData),
+  })
+    .then(async (response) => {
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "We couldn't send your enquiry.");
+      }
+
+      contactForm.reset();
+      formStatus.textContent =
+        "Thanks — your enquiry has been sent. AirThere will be in touch shortly.";
+    })
+    .catch((error) => {
+      formStatus.textContent =
+        error.message || "We couldn't send your enquiry. Please try again.";
+    })
+    .finally(() => {
+      submitButton.disabled = false;
+      submitButton.textContent = "Send enquiry";
+    });
 });
