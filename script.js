@@ -26,5 +26,26 @@ contactForm.addEventListener("submit", (event) => {
     return;
   }
 
-  formStatus.textContent = "The contact form is being connected. Please check back shortly.";
+  const formData = new FormData(contactForm);
+  const name = formData.get("name");
+  const company = formData.get("company");
+  const email = formData.get("email");
+  const phone = formData.get("phone");
+  const project = formData.get("project");
+
+  const subject = `AirThere project enquiry — ${company || name}`;
+  const body = [
+    `Name: ${name}`,
+    `Company: ${company || "Not provided"}`,
+    `Email: ${email}`,
+    `Phone: ${phone || "Not provided"}`,
+    "",
+    "Project details:",
+    project,
+  ].join("\n");
+
+  formStatus.textContent = "Opening your email app with your enquiry ready to send…";
+  window.location.href =
+    `mailto:data@airthere.com.au?subject=${encodeURIComponent(subject)}` +
+    `&body=${encodeURIComponent(body)}`;
 });
