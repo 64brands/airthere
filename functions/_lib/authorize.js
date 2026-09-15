@@ -9,6 +9,7 @@ export const ROLES = {
 export const CAPABILITIES = {
   view_operations: [ROLES.SUPER_ADMIN, ROLES.MANAGER],
   manage_shoots: [ROLES.SUPER_ADMIN, ROLES.MANAGER],
+  delete_shoot_images: [ROLES.SUPER_ADMIN],
   manage_customers: [ROLES.SUPER_ADMIN],
   manage_projects: [ROLES.SUPER_ADMIN],
   manage_customer_access: [ROLES.SUPER_ADMIN],
@@ -37,12 +38,13 @@ export const hasCapability = (user, capability) => {
 
 export const denyCapability = (capability) => {
   const message =
-    capability === "manage_managers" || capability === "system_settings"
+    capability === "manage_managers" ||
+    capability === "system_settings" ||
+    capability === "delete_shoot_images" ||
+    capability === "manage_customers" ||
+    capability === "manage_projects" ||
+    capability === "manage_customer_access"
       ? "This action requires Super Admin access."
-      : capability === "manage_customers" ||
-          capability === "manage_projects" ||
-          capability === "manage_customer_access"
-        ? "This action requires Super Admin access."
-        : "You do not have permission to do that.";
+      : "You do not have permission to do that.";
   return { error: message, status: 403 };
 };

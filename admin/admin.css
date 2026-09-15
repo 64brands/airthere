@@ -536,6 +536,51 @@
   line-height: 1.45;
 }
 
+.ingest-form > .button + .hint {
+  margin-top: 0.9rem;
+}
+
+.shoot-add {
+  margin-top: 1.15rem;
+  padding-top: 0.15rem;
+}
+
+.shoot-add-label {
+  margin: 0 0 0.45rem;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shoot-add .ingest-drop {
+  margin-top: 0.35rem;
+}
+
+.shoot-add .button {
+  margin-top: 0.15rem;
+}
+
+.shoot-remove {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--orange);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.shoot-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .empty {
   color: var(--muted);
 }

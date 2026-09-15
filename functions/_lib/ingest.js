@@ -6,6 +6,7 @@ export const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
 export const MAX_ORIGINALS = 200;
 
 const COMPLETE_STATUSES = new Set(["uploaded", "verified", "published"]);
+const LOCKED_STATUSES = new Set(["verified", "published"]);
 
 export const isJpegFilename = (name) => {
   const lower = String(name || "").toLowerCase();
@@ -92,6 +93,49 @@ export const loadShootImages = async (db, shootId) => {
   return rows.results || [];
 };
 
+const loadShootArchive = async (db, shootId) =>
+  db
+    .prepare(
+      `SELECT s.*,
+              p.code AS project_code,
+              c.slug AS customer_slug
+       FROM shoots s
+       JOIN projects p ON p.id = s.project_id
+       JOIN customers c ON c.id = p.customer_id
+       WHERE s.id = ?`
+    )
+    .bind(shootId)
+    .first();
+
+const shootHighWater = (shoot, images) => {
+  const fromColumn = Number(shoot?.max_seq || 0);
+  const fromRows = (images || []).reduce(
+    (max, image) => Math.max(max, Number(image.seq || 0)),
+    0
+  );
+  return Math.max(fromColumn, fromRows);
+};
+
+const insertImageStatement = (db, image) =>
+  db
+    .prepare(
+      `INSERT INTO images (
+         id, shoot_id, seq, original_filename, generated_filename, original_key,
+         content_type, byte_size, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      image.id,
+      image.shoot_id,
+      image.seq,
+      image.original_filename,
+      image.generated_filename,
+      image.original_key,
+      image.content_type,
+      image.byte_size,
+      image.created_at
+    );
+
 const storedFlags = async (bucket, images) => {
   const flags = await Promise.all(
     images.map(async (image) => {
@@ -137,11 +181,14 @@ export const startOriginalIngest = async ({ db, bucket, project, customer, shoot
     }
     if (existing.status === "draft") {
       await db
-        .prepare(`UPDATE shoots SET status = 'uploading', expected_count = ? WHERE id = ?`)
-        .bind(planned.files.length, existing.id)
+        .prepare(
+          `UPDATE shoots SET status = 'uploading', expected_count = ?, max_seq = ? WHERE id = ?`
+        )
+        .bind(planned.files.length, planned.files.length, existing.id)
         .run();
       existing.status = "uploading";
       existing.expected_count = planned.files.length;
+      existing.max_seq = planned.files.length;
     }
     return json({
       shoot_id: existing.id,
@@ -172,30 +219,11 @@ export const startOriginalIngest = async ({ db, bucket, project, customer, shoot
     db
       .prepare(
         `INSERT INTO shoots (
-           id, project_id, shoot_date, status, expected_count, verified_count, created_at
-         ) VALUES (?, ?, ?, 'uploading', ?, 0, ?)`
+           id, project_id, shoot_date, status, expected_count, verified_count, max_seq, created_at
+         ) VALUES (?, ?, ?, 'uploading', ?, 0, ?, ?)`
       )
-      .bind(shootId, project.id, shootDate, imageRows.length, createdAt),
-    ...imageRows.map((image) =>
-      db
-        .prepare(
-          `INSERT INTO images (
-             id, shoot_id, seq, original_filename, generated_filename, original_key,
-             content_type, byte_size, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .bind(
-          image.id,
-          image.shoot_id,
-          image.seq,
-          image.original_filename,
-          image.generated_filename,
-          image.original_key,
-          image.content_type,
-          image.byte_size,
-          image.created_at
-        )
-    ),
+      .bind(shootId, project.id, shootDate, imageRows.length, imageRows.length, createdAt),
+    ...imageRows.map((image) => insertImageStatement(db, image)),
   ];
 
   await db.batch(statements);
@@ -221,8 +249,8 @@ export const storeOriginalObject = async ({ db, bucket, shootId, imageId, bytes 
 
   const shoot = await db.prepare(`SELECT * FROM shoots WHERE id = ?`).bind(shootId).first();
   if (!shoot) return json({ error: "Shoot not found." }, 404);
-  if (COMPLETE_STATUSES.has(shoot.status)) {
-    return json({ error: "This shoot is already complete." }, 409);
+  if (LOCKED_STATUSES.has(shoot.status)) {
+    return json({ error: "This shoot can no longer be changed." }, 409);
   }
 
   const image = await db
@@ -276,6 +304,9 @@ export const completeOriginalIngest = async ({ db, bucket, shootId }) => {
 
   const shoot = await db.prepare(`SELECT * FROM shoots WHERE id = ?`).bind(shootId).first();
   if (!shoot) return json({ error: "Shoot not found." }, 404);
+  if (LOCKED_STATUSES.has(shoot.status)) {
+    return json({ error: "This shoot can no longer be changed." }, 409);
+  }
 
   const images = await loadShootImages(db, shootId);
   if (!images.length) {
@@ -319,19 +350,139 @@ export const completeOriginalIngest = async ({ db, bucket, shootId }) => {
     );
   }
 
-  if (shoot.status !== "uploaded") {
-    await db
-      .prepare(`UPDATE shoots SET status = 'uploaded', expected_count = ? WHERE id = ?`)
-      .bind(images.length, shoot.id)
-      .run();
-  }
+  const highWater = shootHighWater(shoot, images);
+  await db
+    .prepare(
+      `UPDATE shoots SET status = 'uploaded', expected_count = ?, max_seq = ? WHERE id = ?`
+    )
+    .bind(images.length, highWater, shoot.id)
+    .run();
 
   return json({
     complete: true,
     status: "uploaded",
     expected_count: images.length,
     stored_count: images.length,
-    message: `${images.length} original${images.length === 1 ? "" : "s"} uploaded`,
+    image_count: images.length,
+    max_seq: highWater,
+    message: `${images.length} original${images.length === 1 ? "" : "s"} in this shoot`,
+  });
+};
+
+export const appendOriginals = async ({ db, bucket, shootId, files }) => {
+  if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+
+  const planned = normalizeSourceFiles(files);
+  if (planned.error) return json({ error: planned.error }, 400);
+
+  const shoot = await loadShootArchive(db, shootId);
+  if (!shoot) return json({ error: "Shoot not found." }, 404);
+  if (LOCKED_STATUSES.has(shoot.status)) {
+    return json({ error: "This shoot can no longer be changed." }, 409);
+  }
+
+  const existing = await loadShootImages(db, shootId);
+  if (existing.length + planned.files.length > MAX_ORIGINALS) {
+    return json(
+      {
+        error: `A shoot can take at most ${MAX_ORIGINALS} JPEGs. This shoot already has ${existing.length}.`,
+      },
+      400
+    );
+  }
+
+  const startSeq = shootHighWater(shoot, existing) + 1;
+  const createdAt = nowIso();
+  const imageRows = planned.files.map((file, index) => {
+    const seq = startSeq + index;
+    const filename = generatedFilename(shoot.project_code, shoot.shoot_date, seq, "jpg");
+    return {
+      id: newId(),
+      shoot_id: shoot.id,
+      seq,
+      original_filename: file.original_filename,
+      generated_filename: filename,
+      original_key: originalObjectKey(
+        shoot.customer_slug,
+        shoot.project_code,
+        shoot.shoot_date,
+        filename
+      ),
+      content_type: JPEG_CONTENT_TYPE,
+      byte_size: file.byte_size,
+      created_at: createdAt,
+    };
+  });
+
+  const nextHighWater = imageRows[imageRows.length - 1].seq;
+  const nextCount = existing.length + imageRows.length;
+
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE shoots SET status = 'uploading', expected_count = ?, max_seq = ? WHERE id = ?`
+      )
+      .bind(nextCount, nextHighWater, shoot.id),
+    ...imageRows.map((image) => insertImageStatement(db, image)),
+  ]);
+
+  return json(
+    {
+      shoot_id: shoot.id,
+      appended: true,
+      max_seq: nextHighWater,
+      image_count: nextCount,
+      images: imageRows.map((image) => publicImage(image, { stored: false, stored_bytes: 0 })),
+    },
+    201
+  );
+};
+
+export const removeOriginalImage = async ({ db, bucket, shootId, imageId }) => {
+  if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+
+  const shoot = await db.prepare(`SELECT * FROM shoots WHERE id = ?`).bind(shootId).first();
+  if (!shoot) return json({ error: "Shoot not found." }, 404);
+  if (LOCKED_STATUSES.has(shoot.status)) {
+    return json({ error: "This shoot can no longer be changed." }, 409);
+  }
+
+  const image = await db
+    .prepare(`SELECT * FROM images WHERE id = ? AND shoot_id = ?`)
+    .bind(imageId, shootId)
+    .first();
+  if (!image) return json({ error: "Image not found." }, 404);
+
+  try {
+    await bucket.delete(image.original_key);
+  } catch {
+    /* missing archive object should not block removing the record */
+  }
+
+  const highWater = Math.max(Number(shoot.max_seq || 0), Number(image.seq || 0));
+  const statements = [
+    db.prepare(`DELETE FROM images WHERE id = ? AND shoot_id = ?`).bind(image.id, shoot.id),
+  ];
+  if (shoot.cover_image_id === image.id) {
+    statements.push(
+      db.prepare(`UPDATE shoots SET cover_image_id = NULL WHERE id = ?`).bind(shoot.id)
+    );
+  }
+  await db.batch(statements);
+
+  const remaining = await loadShootImages(db, shoot.id);
+  await db
+    .prepare(`UPDATE shoots SET expected_count = ?, max_seq = ? WHERE id = ?`)
+    .bind(remaining.length, highWater, shoot.id)
+    .run();
+  return json({
+    removed: true,
+    image_id: image.id,
+    generated_filename: image.generated_filename,
+    seq: image.seq,
+    expected_count: remaining.length,
+    image_count: remaining.length,
+    max_seq: highWater,
   });
 };
 

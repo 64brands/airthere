@@ -2,8 +2,10 @@ import { requireAdmin } from "../../_lib/access.js";
 import { denyCapability, hasCapability } from "../../_lib/authorize.js";
 import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_lib/http.js";
 import {
+  appendOriginals,
   completeOriginalIngest,
   publicImage,
+  removeOriginalImage,
   serveOriginalObject,
   startOriginalIngest,
   storeOriginalObject,
@@ -61,7 +63,9 @@ const publicShoot = (row) => ({
   shoot_date: row.shoot_date,
   shoot_date_display: formatDisplayDate(row.shoot_date),
   status: row.status,
-  expected_count: row.expected_count,
+  expected_count: Number(row.expected_count || 0),
+  image_count: Number(row.image_count || 0),
+  max_seq: Number(row.max_seq || 0),
   verified_count: row.verified_count,
   cover_image_id: row.cover_image_id,
   created_at: row.created_at,
@@ -102,6 +106,7 @@ const getProject = async (db, id) =>
 
 const shootSelect = `
   SELECT s.*,
+         (SELECT COUNT(*) FROM images i WHERE i.shoot_id = s.id) AS image_count,
          p.name AS project_name,
          p.code AS project_code,
          p.customer_id,
@@ -159,7 +164,7 @@ export const onRequest = async (context) => {
     if (parts[0] === "shoots") {
       const denied = need(method === "GET" ? "view_operations" : "manage_shoots");
       if (denied) return denied;
-      return shoots(context.env, db, method, parts, request, url);
+      return shoots(context.env, db, method, parts, request, url, actor);
     }
 
     return json({ error: "Not found." }, 404);
@@ -440,7 +445,7 @@ const readOriginalBytes = async (request) => {
   return new Uint8Array(buffer);
 };
 
-const shoots = async (env, db, method, parts, request, url) => {
+const shoots = async (env, db, method, parts, request, url, actor) => {
   if (parts.length === 1) {
     if (method === "GET") {
       const projectId = url.searchParams.get("project_id");
@@ -531,6 +536,18 @@ const shoots = async (env, db, method, parts, request, url) => {
     return completeOriginalIngest({ db, bucket: env.IMAGES, shootId: parts[1] });
   }
 
+  if (parts.length === 3 && parts[2] === "originals") {
+    if (method !== "POST") return methodNotAllowed("POST");
+    const body = await readJson(request);
+    if (!body) return json({ error: "Invalid JSON." }, 400);
+    return appendOriginals({
+      db,
+      bucket: env.IMAGES,
+      shootId: parts[1],
+      files: body.files,
+    });
+  }
+
   if (parts.length === 4 && parts[2] === "originals") {
     if (method === "GET") {
       return serveOriginalObject({
@@ -540,7 +557,19 @@ const shoots = async (env, db, method, parts, request, url) => {
         imageId: parts[3],
       });
     }
-    if (method !== "PUT") return methodNotAllowed("GET, PUT");
+    if (method === "DELETE") {
+      if (!hasCapability(actor, "delete_shoot_images")) {
+        const denied = denyCapability("delete_shoot_images");
+        return json({ error: denied.error }, denied.status);
+      }
+      return removeOriginalImage({
+        db,
+        bucket: env.IMAGES,
+        shootId: parts[1],
+        imageId: parts[3],
+      });
+    }
+    if (method !== "PUT") return methodNotAllowed("GET, PUT, DELETE");
     const bytes = await readOriginalBytes(request);
     return storeOriginalObject({
       db,
