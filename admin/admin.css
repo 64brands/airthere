@@ -655,7 +655,8 @@ body.lightbox-open {
 }
 
 .admin-body.lightbox-open .app-header {
-  z-index: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .lightbox {
@@ -671,7 +672,7 @@ body.lightbox-open {
 .lightbox-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(20, 35, 61, 0.86);
+  background: rgba(8, 12, 20, 0.94);
 }
 
 .lightbox-close,
