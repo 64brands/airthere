@@ -25,7 +25,10 @@ const ingest = {
   dateError: "",
   files: [],
   rejected: [],
+  busy: false,
 };
+
+const COMPLETE_SHOOT_STATUSES = new Set(["uploaded", "verified", "published"]);
 
 const isSuperAdmin = () => state.user?.role === "super_admin";
 
@@ -56,6 +59,115 @@ const api = async (path, options = {}) => {
     throw new Error(data.error || "Request failed.");
   }
   return data;
+};
+
+const uploadOriginalBytes = async (path, file) => {
+  const response = await fetch(path, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "image/jpeg",
+    },
+    body: file,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Original upload failed.");
+  }
+  return data;
+};
+
+const currentIngestSelection = () => {
+  const selectedCustomerId = state.selectedCustomerId || state.customers[0]?.id || "";
+  const customer = state.customers.find((item) => item.id === selectedCustomerId);
+  const projects = state.projects.filter((project) => project.customer_id === selectedCustomerId);
+  const selectedProjectId = projects.some((project) => project.id === state.selectedProjectId)
+    ? state.selectedProjectId
+    : projects[0]?.id || "";
+  const project = projects.find((item) => item.id === selectedProjectId);
+  return { customer, project, shootDate: ingest.shootDate };
+};
+
+const uploadShoot = async () => {
+  if (ingest.busy) return;
+  const { customer, project, shootDate } = currentIngestSelection();
+  if (!customer || !project || !shootDate || !ingest.files.length) {
+    setStatus("Choose the customer, project, Shoot Date and JPEGs first.", true);
+    return;
+  }
+
+  ingest.busy = true;
+  const uploadButton = document.querySelector("#ingest-upload");
+  if (uploadButton) uploadButton.disabled = true;
+
+  const fileMap = new Map(ingest.files.map((file) => [file.name.toLowerCase(), file]));
+  const failures = [];
+
+  try {
+    setStatus("Preparing shoot records…");
+    const started = await api("/api/admin/shoots/ingest", {
+      method: "POST",
+      body: {
+        project_id: project.id,
+        shoot_date: shootDate,
+        files: ingest.files.map((file) => ({
+          original_filename: file.name,
+          byte_size: file.size,
+        })),
+      },
+    });
+
+    const images = started.images || [];
+    const total = images.length;
+    let storedCount = images.filter((image) => image.stored).length;
+
+    for (let index = 0; index < images.length; index += 1) {
+      const image = images[index];
+      if (image.stored) continue;
+      const file = fileMap.get(String(image.original_filename || "").toLowerCase());
+      if (!file) {
+        failures.push(`${image.original_filename}: re-select this original JPEG to continue.`);
+        continue;
+      }
+      setStatus(`Uploading ${index + 1} of ${total}`);
+      try {
+        await uploadOriginalBytes(
+          `/api/admin/shoots/${started.shoot_id}/originals/${image.id}`,
+          file
+        );
+        storedCount += 1;
+      } catch (error) {
+        failures.push(`${file.name}: ${error.message}`);
+      }
+    }
+
+    if (failures.length) {
+      throw new Error(
+        `Upload incomplete. ${storedCount} of ${total} originals stored. ${failures.join(" ")}`
+      );
+    }
+
+    const completed = await api(`/api/admin/shoots/${started.shoot_id}/complete`, {
+      method: "POST",
+      body: {},
+    });
+    ingest.files = [];
+    ingest.rejected = [];
+    await loadAll();
+    ingest.busy = false;
+    render();
+    setStatus(completed.message || `${total} originals uploaded`);
+  } catch (error) {
+    ingest.busy = false;
+    try {
+      await loadAll();
+    } catch {
+      /* keep the local ingest selection visible */
+    }
+    render();
+    setStatus(error.message, true);
+  }
 };
 
 const suggestCode = (name) =>
@@ -171,9 +283,13 @@ const customerOptions = (selected) =>
 
 const shootStatusLabel = (shoot) => {
   const expected = Number(shoot.expected_count || 0);
-  const verified = Number(shoot.verified_count || 0);
   if (shoot.status === "draft" && expected === 0) return "Draft — no images";
-  if (shoot.status === "uploading") return `Uploading — ${verified}/${expected}`;
+  if (shoot.status === "uploading") {
+    return expected ? `Uploading — originals incomplete · ${expected} JPEG${expected === 1 ? "" : "s"}` : "Uploading";
+  }
+  if (shoot.status === "uploaded") {
+    return `${expected} original${expected === 1 ? "" : "s"} uploaded`;
+  }
   if (shoot.status === "verified") return `Verified · ${expected} images`;
   if (shoot.status === "published") return `Published · ${expected} images`;
   return `${shoot.status}${expected ? ` · ${expected} images` : ""}`;
@@ -329,8 +445,10 @@ const renderShoots = () => {
     shootDate &&
     selectedProjectId &&
     state.shoots.find((shoot) => shoot.project_id === selectedProjectId && shoot.shoot_date === shootDate);
+  const blockingShoot = existingShoot && COMPLETE_SHOOT_STATUSES.has(existingShoot.status);
+  const incompleteShoot = existingShoot && !blockingShoot;
   const jpegCount = ingest.files.length;
-  const ready = Boolean(customer && project && shootDate && jpegCount && !existingShoot);
+  const ready = Boolean(customer && project && shootDate && jpegCount && !blockingShoot && !ingest.busy);
   const previewCount = Math.min(3, jpegCount);
   const previewNames =
     project && shootDate
@@ -420,9 +538,11 @@ const renderShoots = () => {
                 }</p>`
           }
           ${
-            existingShoot
+            blockingShoot
               ? `<p class="form-error" role="status">A Shoot already exists for this project on this date.</p>`
-              : ""
+              : incompleteShoot
+                ? `<p class="form-error" role="status">This shoot is incomplete. Re-select the same JPEGs to continue uploading originals.</p>`
+                : ""
           }
           ${
             jpegCount
@@ -457,7 +577,7 @@ const renderShoots = () => {
               : ""
           }
           <button class="button" type="button" id="ingest-upload" ${ready ? "" : "disabled"}>Upload Shoot</button>
-          <p class="hint">Permanent archive upload is not active yet. Review the Shoot Date and filenames first.</p>
+          <p class="hint">Original JPEGs are stored privately. Standard images and archive verification are not part of this step.</p>
         </form>
       </section>
     </div>
@@ -528,11 +648,13 @@ document.addEventListener("click", (event) => {
 
   const drop = event.target.closest("#ingest-drop");
   if (drop && !event.target.closest("#ingest-files")) {
+    if (ingest.busy) return;
     document.querySelector("#ingest-files")?.click();
     return;
   }
 
   if (event.target.id === "ingest-clear") {
+    if (ingest.busy) return;
     ingest.files = [];
     ingest.rejected = [];
     render();
@@ -541,13 +663,12 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "ingest-upload") {
     event.preventDefault();
-    setStatus(
-      "Upload is not active yet. This workflow will connect to the AirThere archive in the next release."
-    );
+    uploadShoot();
   }
 });
 
 document.addEventListener("change", (event) => {
+  if (ingest.busy && event.target.closest("#ingest-form")) return;
   if (event.target.id === "project-customer-filter" || event.target.id === "shoot-customer-filter") {
     state.selectedCustomerId = event.target.value;
     state.selectedProjectId = "";
@@ -586,6 +707,7 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (event.target.id === "ingest-files") {
+    if (ingest.busy) return;
     addJpegFiles(event.target.files);
     event.target.value = "";
     render();
@@ -616,7 +738,7 @@ document.addEventListener("dragleave", (event) => {
 
 document.addEventListener("drop", (event) => {
   const drop = event.target.closest("#ingest-drop");
-  if (!drop) return;
+  if (!drop || ingest.busy) return;
   event.preventDefault();
   drop.classList.remove("is-over");
   addJpegFiles(event.dataTransfer?.files);

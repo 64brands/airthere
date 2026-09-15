@@ -5,6 +5,11 @@
  * Date component comes ONLY from shoots.shoot_date — never upload/EXIF/mtime.
  */
 
+const sourceNameCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
 const padSeq = (seq) => {
   const n = Number(seq);
   if (!Number.isInteger(n) || n < 1) {
@@ -12,6 +17,9 @@ const padSeq = (seq) => {
   }
   return n > 999 ? String(n) : String(n).padStart(3, "0");
 };
+
+export const compareSourceFilenames = (left, right) =>
+  sourceNameCollator.compare(String(left || ""), String(right || ""));
 
 export const filenameDateFromShootDate = (shootDate) => {
   const [year, month, day] = String(shootDate).split("-");
