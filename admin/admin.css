@@ -634,11 +634,160 @@
   margin: 0;
 }
 
+.shoot-view-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
 .shoot-view-card img {
   width: 100%;
   height: 168px;
   object-fit: contain;
   background: var(--white);
+}
+
+body.lightbox-open {
+  overflow: hidden;
+}
+
+.admin-body.lightbox-open .app-header {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.94);
+}
+
+.lightbox-close,
+.lightbox-nav {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+}
+
+.lightbox-close {
+  top: 1rem;
+  right: 1rem;
+  width: 2.6rem;
+  height: 2.6rem;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.lightbox-nav {
+  top: 50%;
+  width: 2.8rem;
+  height: 2.8rem;
+  font-size: 2.1rem;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.lightbox-prev {
+  left: 0.6rem;
+}
+
+.lightbox-next {
+  right: 0.6rem;
+}
+
+.lightbox-close:hover,
+.lightbox-nav:hover {
+  color: var(--white);
+}
+
+.lightbox-nav[hidden] {
+  display: none;
+}
+
+.lightbox-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.7rem;
+  height: 100%;
+  padding: 3.4rem 4.2rem 1.4rem;
+  margin: 0;
+  pointer-events: none;
+}
+
+.lightbox-image {
+  max-width: min(92vw, 1280px);
+  max-height: calc(100vh - 7.2rem);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.lightbox-caption {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.lightbox-seq {
+  color: var(--orange);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.lightbox-name {
+  max-width: min(90vw, 52rem);
+  color: rgba(255, 255, 255, 0.72);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+@media (max-width: 900px) {
+  .lightbox-stage {
+    padding: 3.2rem 1rem 1.2rem;
+  }
+
+  .lightbox-nav {
+    top: auto;
+    bottom: 4.6rem;
+    transform: none;
+  }
+
+  .lightbox-prev {
+    left: 0.7rem;
+  }
+
+  .lightbox-next {
+    right: 0.7rem;
+  }
 }
 
 .shoot-view-card figcaption {

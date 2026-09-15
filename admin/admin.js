@@ -911,14 +911,21 @@ const renderShootView = (shootId) => {
         count
           ? `<div class="shoot-view-grid">${shootView.images
               .map(
-                (image) => `
+                (image, index) => `
             <figure class="shoot-view-card">
-              <img
-                src="/api/admin/shoots/${escapeHtml(shoot.id)}/originals/${escapeHtml(image.id)}"
-                alt="${escapeHtml(image.generated_filename)}"
-                loading="lazy"
-                decoding="async"
-              />
+              <button
+                type="button"
+                class="shoot-view-open"
+                data-lightbox-index="${index}"
+                aria-label="View ${escapeHtml(image.generated_filename)}"
+              >
+                <img
+                  src="/api/admin/shoots/${escapeHtml(shoot.id)}/originals/${escapeHtml(image.id)}"
+                  alt="${escapeHtml(image.generated_filename)}"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </button>
               <figcaption>
                 <span class="shoot-seq">${String(image.seq).padStart(3, "0")}</span>
                 <span class="shoot-filename">${escapeHtml(image.generated_filename)}</span>
@@ -1000,6 +1007,9 @@ const render = () => {
   activeRouteKey = routeKey;
   if (customerId) state.selectedCustomerId = customerId;
   document.body.classList.toggle("is-shoots", view === "shoots");
+  if (!(view === "shoots" && shootId)) {
+    window.AirThereLightbox?.close();
+  }
   if (!(view === "shoots" && shootId) && shootView.requestedId) {
     resetShootView();
   }
@@ -1135,6 +1145,21 @@ document.addEventListener("click", (event) => {
   if (removeImage) {
     event.preventDefault();
     removeShootImage(removeImage.getAttribute("data-remove-image"));
+    return;
+  }
+
+  const lightboxOpen = event.target.closest("[data-lightbox-index]");
+  if (lightboxOpen && shootView.shoot) {
+    event.preventDefault();
+    const index = Number(lightboxOpen.getAttribute("data-lightbox-index"));
+    window.AirThereLightbox?.open(
+      shootView.images.map((image) => ({
+        src: `/api/admin/shoots/${shootView.shoot.id}/originals/${image.id}`,
+        seq: image.seq,
+        filename: image.generated_filename,
+      })),
+      index
+    );
     return;
   }
 
