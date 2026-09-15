@@ -375,25 +375,14 @@ const renderShoots = () => {
             <span>Shoot Date</span>
             <input type="date" id="ingest-date" required value="${escapeHtml(shootDate)}" />
           </label>
-          <p class="hint">The date the photography happened. Historical dates are normal.</p>
+          <p class="hint">${
+            shootDate
+              ? `Shoot Date: ${escapeHtml(displayShootDate(shootDate))}. Historical dates are normal.`
+              : "The date the photography happened. Historical dates are normal."
+          }</p>
           ${
             existingShoot
               ? `<p class="form-error" role="status">A Shoot already exists for this project on this date.</p>`
-              : ""
-          }
-          <div class="ingest-drop" id="ingest-drop" tabindex="0">
-            <input class="ingest-file-input" id="ingest-files" type="file" accept=".jpg,.jpeg,image/jpeg" multiple />
-            <p class="ingest-drop-title">Drop JPEG images here</p>
-            <p class="ingest-drop-copy">or click to choose multiple files</p>
-          </div>
-          ${
-            ingest.rejected.length
-              ? `<ul class="ingest-rejected">${ingest.rejected
-                  .map(
-                    (item) =>
-                      `<li>Not added: ${escapeHtml(item.name)} (${escapeHtml(item.reason)})</li>`
-                  )
-                  .join("")}</ul>`
               : ""
           }
           ${
@@ -409,12 +398,23 @@ const renderShoots = () => {
                     ? `<br /><span>and ${jpegCount - previewCount} more</span>`
                     : ""
                 }</p>
-            ${
-              jpegCount
-                ? `<button class="text-clear" type="button" id="ingest-clear">Clear images</button>`
-                : ""
-            }
+            <button class="text-clear" type="button" id="ingest-clear">Clear images</button>
           </div>`
+              : ""
+          }
+          <div class="ingest-drop${jpegCount ? " is-compact" : ""}" id="ingest-drop" tabindex="0">
+            <input class="ingest-file-input" id="ingest-files" type="file" accept=".jpg,.jpeg,image/jpeg" multiple />
+            <p class="ingest-drop-title">${jpegCount ? "Add more JPEG images" : "Drop JPEG images here"}</p>
+            <p class="ingest-drop-copy">or click to choose multiple files</p>
+          </div>
+          ${
+            ingest.rejected.length
+              ? `<ul class="ingest-rejected">${ingest.rejected
+                  .map(
+                    (item) =>
+                      `<li>Not added: ${escapeHtml(item.name)} (${escapeHtml(item.reason)})</li>`
+                  )
+                  .join("")}</ul>`
               : ""
           }
           <button class="button" type="button" id="ingest-upload" ${ready ? "" : "disabled"}>Upload Shoot</button>

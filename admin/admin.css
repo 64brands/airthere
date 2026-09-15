@@ -231,8 +231,9 @@
   cursor: pointer;
 }
 
-.ingest-drop.is-over {
-  border-color: var(--orange);
+.ingest-drop.is-compact {
+  margin-top: 0.6rem;
+  padding: 1.2rem 1.4rem;
 }
 
 .ingest-drop-title {
