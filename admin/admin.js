@@ -21,6 +21,8 @@ const state = {
 
 const ingest = {
   shootDate: "",
+  dateDraft: "",
+  dateError: "",
   files: [],
   rejected: [],
 };
@@ -85,6 +87,29 @@ const displayShootDate = (isoDate) => {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, day)));
+};
+
+const parseIsoShootDate = (value) => {
+  const date = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) {
+    return { error: "Use YYYY-MM-DD, for example 2025-03-21." };
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return { error: "Shoot Date must be a valid calendar date." };
+  }
+  if (year < 2000 || year > 2100) {
+    return { error: "Shoot Date is outside the supported range." };
+  }
+  return { value: date };
 };
 
 const isJpegFile = (file) => {
@@ -373,13 +398,27 @@ const renderShoots = () => {
           </label>
           <label>
             <span>Shoot Date</span>
-            <input type="date" id="ingest-date" required value="${escapeHtml(shootDate)}" />
+            <input
+              type="text"
+              id="ingest-date"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="10"
+              placeholder="YYYY-MM-DD"
+              required
+              value="${escapeHtml(ingest.dateDraft || shootDate)}"
+            />
           </label>
-          <p class="hint">${
-            shootDate
-              ? `Shoot Date: ${escapeHtml(displayShootDate(shootDate))}. Historical dates are normal.`
-              : "The date the photography happened. Historical dates are normal."
-          }</p>
+          ${
+            ingest.dateError
+              ? `<p class="form-error" role="alert">${escapeHtml(ingest.dateError)}</p>`
+              : `<p class="hint">${
+                  shootDate
+                    ? `Shoot Date: ${escapeHtml(displayShootDate(shootDate))}. Historical dates are normal.`
+                    : "Enter the photography date as YYYY-MM-DD. Historical dates are normal."
+                }</p>`
+          }
           ${
             existingShoot
               ? `<p class="form-error" role="status">A Shoot already exists for this project on this date.</p>`
@@ -532,7 +571,17 @@ document.addEventListener("change", (event) => {
     return;
   }
   if (event.target.id === "ingest-date") {
-    ingest.shootDate = event.target.value;
+    const checked = parseIsoShootDate(event.target.value);
+    if (checked.error) {
+      ingest.shootDate = "";
+      ingest.dateDraft = String(event.target.value || "").trim();
+      ingest.dateError = checked.error;
+      render();
+      return;
+    }
+    ingest.shootDate = checked.value;
+    ingest.dateDraft = checked.value;
+    ingest.dateError = "";
     render();
     return;
   }

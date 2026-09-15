@@ -217,8 +217,8 @@
   gap: 1rem;
 }
 
-.ingest-form {
-  max-width: none;
+#ingest-date {
+  font-variant-numeric: tabular-nums;
 }
 
 .ingest-drop {
