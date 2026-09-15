@@ -1,7 +1,13 @@
 import { requireAdmin } from "../../_lib/access.js";
 import { denyCapability, hasCapability } from "../../_lib/authorize.js";
 import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_lib/http.js";
+import {
+  filenameDateFromShootDate,
+  generatedFilename,
+  originalObjectKey,
+} from "../../_lib/names.js";
 import { hashPassword } from "../../_lib/passwords.js";
+import { bindingPresence, secretPresence } from "../../_lib/runtime.js";
 import {
   clean,
   formatDisplayDate,
@@ -123,6 +129,13 @@ export const onRequest = async (context) => {
       }
     }
 
+    if (parts[0] === "system") {
+      const denied = need("system_settings");
+      if (denied) return denied;
+      if (method !== "GET") return methodNotAllowed("GET");
+      return systemStatus(context.env, url);
+    }
+
     if (parts[0] === "customers") {
       const denied = need(method === "GET" ? "view_operations" : "manage_customers");
       if (denied) return denied;
@@ -143,6 +156,46 @@ export const onRequest = async (context) => {
   } catch (error) {
     return json({ error: uniqueError(error, "Unable to complete that request.") }, 400);
   }
+};
+
+const PROBE_KEY = "__airthere/foundation-probe.txt";
+
+const systemStatus = async (env, url) => {
+  const shootDate = "2025-03-21";
+  const filename = generatedFilename("mount_whitsunday_stage_1", shootDate, 1, "jpg");
+  let imagesProbe = null;
+  if (url.searchParams.get("probe_images") === "1") {
+    if (!env.IMAGES) {
+      imagesProbe = { ok: false, reason: "unbound" };
+    } else {
+      await env.IMAGES.put(PROBE_KEY, "ok");
+      const got = await env.IMAGES.get(PROBE_KEY);
+      const text = got ? await got.text() : null;
+      await env.IMAGES.delete(PROBE_KEY);
+      imagesProbe = { ok: text === "ok", read: Boolean(text), deleted: true };
+    }
+  }
+
+  return json({
+    bindings: bindingPresence(env),
+    config: {
+      canonical_host: env.CANONICAL_HOST || null,
+      preview_lockdown: env.PREVIEW_LOCKDOWN === "true",
+    },
+    secrets_present: secretPresence(env),
+    shoot_date_helpers: {
+      shoot_date: shootDate,
+      filename_date: filenameDateFromShootDate(shootDate),
+      generated_filename: filename,
+      original_object_key: originalObjectKey(
+        "ovpg",
+        "mount_whitsunday_stage_1",
+        shootDate,
+        filename
+      ),
+    },
+    images_probe: imagesProbe,
+  });
 };
 
 const customers = async (db, method, parts, request, url) => {

@@ -79,7 +79,7 @@ That covers `/admin`, `/admin/`, `/api/admin/customers`, etc. Do **not** put `/o
 
 | Setting | Value |
 |---|---|
-| Policy name | `AirThere operators` |
+| Policy name | `AirThere Operators` |
 | Action | Allow |
 | Include | Emails → `paul@64.com.au` |
 
@@ -98,72 +98,22 @@ Reuse whatever already authenticates `paul@64.com.au` on the existing 64.au Acce
 
 Both are Pages **secrets**, not git.
 
-Until Access is on, `/admin` shows that Access is required. After Access is on, AirThere still denies anyone who is not an active row in `admin_users`.
+Until Access is configured, `/admin` shows that Access is required. After Access is on, AirThere still denies anyone who is not an active row in `admin_users`.
 
-## Required Cloudflare actions
+## Cloudflare configuration
 
-This environment can create D1 databases, but **cannot** create R2 buckets, edit Pages project settings, or configure Cloudflare Access. Paul needs to complete the following in the 64brands Cloudflare account before Admin and the archive can go live.
+Paul completed the following in the 64brands account. Wrangler is the source of truth for D1/R2 bindings. Pages **secrets stay in the dashboard** and are not committed.
 
-### 1. Enable Workers Paid
+| Environment | D1 | R2 (`env.IMAGES`) | Config / secrets |
+|---|---|---|---|
+| Production | `DB` → `airthere` | `airthere-images` | `CANONICAL_HOST`; secrets `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, `SESSION_SECRET`, `RESEND_API_KEY` |
+| Preview | `DB` → `airthere-preview` | `airthere-images-preview` | `CANONICAL_HOST`, `PREVIEW_LOCKDOWN=true`; secrets `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, `SESSION_SECRET` |
 
-Workers & Pages → plan → Workers Paid (USD $5/month). Needed for authenticated app routes.
+Both R2 buckets are private: no `r2.dev` public URL, no public bucket access, no public custom domain.
 
-### 2. Create private R2 buckets
+Access application **AirThere Admin** protects `/admin*` and `/api/admin*` only. Policy **AirThere Operators** allows `paul@64.com.au`. Do not modify 64.au / 64OS Access.
 
-R2 → Create bucket:
-
-| Bucket | Purpose |
-|---|---|
-| `airthere-images` | Production originals + web derivatives |
-| `airthere-images-preview` | Preview only — keep empty of real customer files |
-
-Do **not** enable a public `r2.dev` URL, custom domain, or public object access.
-
-Then uncomment the `r2_buckets` bindings in `wrangler.jsonc` (production `IMAGES` → `airthere-images`, preview `IMAGES` → `airthere-images-preview`) and redeploy.
-
-### 3. Cloudflare Access for Admin
-
-Follow **Access model → Cloudflare Access setup** above. Summary:
-
-1. Open [Cloudflare Zero Trust](https://one.dash.cloudflare.com/).
-2. Add a **self-hosted** application named `AirThere Admin`.
-3. Protect `airthere.com.au` paths `admin*` and `api/admin*` on that **same** application.
-4. Policy name `AirThere operators`, Action **Allow**, Include email `paul@64.com.au`.
-5. Reuse the login methods that already authenticate `paul@64.com.au` on 64.au. Do not modify 64.au.
-6. Copy the team domain and the **AirThere Admin** AUD tag into Pages secrets.
-
-Until this is done, `/admin` shows that Access is required and admin APIs return 503. After Access is on, Cloudflare login alone is still not enough — the identity must match an active `admin_users` row.
-
-### 4. Pages secrets (production)
-
-Pages → `airthere` → Settings → Variables and secrets.
-
-Keep the existing secret:
-
-- `RESEND_API_KEY` (already used by `/api/contact`)
-
-Add:
-
-| Secret | Purpose |
-|---|---|
-| `SESSION_SECRET` | Long random value for customer portal cookies. Example: `openssl rand -base64 48` |
-| `CF_ACCESS_TEAM_DOMAIN` | Zero Trust team domain, e.g. `yourteam.cloudflareaccess.com` |
-| `CF_ACCESS_AUD` | Access application AUD tag |
-
-Do not add these to the repository.
-
-### 5. Confirm D1 bindings after first deploy
-
-Production D1 already exists:
-
-- `airthere` (`4f80e221-9f3d-46b4-9493-dfd9bec8bcae`)
-- `airthere-preview` (`faa4d482-cadd-4f1d-8bbb-1a3d067c5d53`)
-
-`wrangler.jsonc` binds them as `DB`. After merge, confirm Pages Settings → Bindings shows `DB` on production and the preview database on preview.
-
-### 6. Optional zone redirect
-
-The app already 301s `www.airthere.com.au` → `airthere.com.au` for HTML/app routes. A Cloudflare Redirect Rule for all www traffic is still a good extra if you want assets on www to canonicalise as well.
+Optional: a Cloudflare Redirect Rule for all `www` traffic is still a good extra if you want assets on www to canonicalise as well. HTML/app routes already 301 to the apex host.
 
 ## Seeded records
 
@@ -185,4 +135,4 @@ Stage 2 is not created.
 
 ## Preview safety
 
-`*.airthere.pages.dev` does not serve Admin, portal, or media. Preview uses a separate D1 database. Production originals must never be bound to preview.
+`*.airthere.pages.dev` does not serve Admin, portal, or media. Preview uses D1 `airthere-preview` and R2 `airthere-images-preview` via the same `DB` and `IMAGES` binding names. Production originals must never be bound to preview.

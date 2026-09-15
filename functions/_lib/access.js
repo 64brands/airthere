@@ -6,6 +6,7 @@ import {
   publicOperator,
 } from "./authorize.js";
 import { isLocalHost, isPreviewHost } from "./preview.js";
+import { bindingPresence } from "./runtime.js";
 
 const jwksCache = new Map();
 
@@ -151,7 +152,14 @@ export const requireAdmin = async (context, capability) => {
   const identity = await authenticateOperationalRequest(context);
   if (!identity.ok) {
     if (identity.reason === "preview") {
-      return json({ error: "Admin is not available on preview deployments." }, 403);
+      return json(
+        {
+          error: "Admin is not available on preview deployments.",
+          preview: true,
+          bindings: bindingPresence(context.env),
+        },
+        403
+      );
     }
     if (identity.reason === "not_configured") {
       return json(

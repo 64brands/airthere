@@ -12,11 +12,16 @@
       "database_id": "4f80e221-9f3d-46b4-9493-dfd9bec8bcae"
     }
   ],
-  // Private R2 archive — create these buckets in the Cloudflare dashboard, then
-  // uncomment. Do not enable a public r2.dev URL or public bucket access.
-  // "r2_buckets": [
-  //   { "binding": "IMAGES", "bucket_name": "airthere-images" }
-  // ],
+  // Application code always uses env.IMAGES. Production and Preview attach
+  // different private buckets. preview_bucket_name is for wrangler pages dev
+  // so local work cannot write to the production archive.
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "airthere-images",
+      "preview_bucket_name": "airthere-images-preview"
+    }
+  ],
   "env": {
     "preview": {
       "vars": {
@@ -29,10 +34,13 @@
           "database_name": "airthere-preview",
           "database_id": "faa4d482-cadd-4f1d-8bbb-1a3d067c5d53"
         }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "IMAGES",
+          "bucket_name": "airthere-images-preview"
+        }
       ]
-      // "r2_buckets": [
-      //   { "binding": "IMAGES", "bucket_name": "airthere-images-preview" }
-      // ]
     }
   }
 }
