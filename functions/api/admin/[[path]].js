@@ -2,6 +2,12 @@ import { requireAdmin } from "../../_lib/access.js";
 import { denyCapability, hasCapability } from "../../_lib/authorize.js";
 import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_lib/http.js";
 import {
+  completeOriginalIngest,
+  publicImage,
+  startOriginalIngest,
+  storeOriginalObject,
+} from "../../_lib/ingest.js";
+import {
   filenameDateFromShootDate,
   generatedFilename,
   originalObjectKey,
@@ -21,7 +27,7 @@ import {
 
 const CUSTOMER_STATUSES = ["active", "disabled"];
 const PROJECT_STATUSES = ["active", "disabled"];
-const SHOOT_STATUSES = ["draft", "uploading", "verified", "published"];
+const SHOOT_STATUSES = ["draft", "uploading", "uploaded", "verified", "published"];
 
 const publicCustomer = (row) => ({
   id: row.id,
@@ -72,6 +78,9 @@ const uniqueError = (error, fallback) => {
   }
   if (message.includes("UNIQUE") && message.includes("shoot_date")) {
     return "This project already has a shoot on that Shoot Date.";
+  }
+  if (message.includes("UNIQUE") && message.includes("original_key")) {
+    return "That original archive path is already in use.";
   }
   return fallback;
 };
@@ -149,7 +158,7 @@ export const onRequest = async (context) => {
     if (parts[0] === "shoots") {
       const denied = need(method === "GET" ? "view_operations" : "manage_shoots");
       if (denied) return denied;
-      return shoots(db, method, parts, request, url);
+      return shoots(context.env, db, method, parts, request, url);
     }
 
     return json({ error: "Not found." }, 404);
@@ -425,7 +434,12 @@ const projects = async (db, method, parts, request, url) => {
   return json({ error: "Not found." }, 404);
 };
 
-const shoots = async (db, method, parts, request, url) => {
+const readOriginalBytes = async (request) => {
+  const buffer = await request.arrayBuffer();
+  return new Uint8Array(buffer);
+};
+
+const shoots = async (env, db, method, parts, request, url) => {
   if (parts.length === 1) {
     if (method === "GET") {
       const projectId = url.searchParams.get("project_id");
@@ -475,11 +489,57 @@ const shoots = async (db, method, parts, request, url) => {
     return methodNotAllowed("GET, POST");
   }
 
+  if (parts.length === 2 && parts[1] === "ingest") {
+    if (method !== "POST") return methodNotAllowed("POST");
+    const body = await readJson(request);
+    if (!body) return json({ error: "Invalid JSON." }, 400);
+    const projectId = clean(body.project_id, 64);
+    const shootDate = validateShootDate(body.shoot_date);
+    if (!projectId) return json({ error: "Select a project." }, 400);
+    if (shootDate.error) return json({ error: shootDate.error }, 400);
+    const project = await getProject(db, projectId);
+    if (!project) return json({ error: "Project not found." }, 404);
+    const customer = await getCustomer(db, project.customer_id);
+    if (!customer) return json({ error: "Customer not found." }, 404);
+    return startOriginalIngest({
+      db,
+      bucket: env.IMAGES,
+      project,
+      customer,
+      shootDate: shootDate.value,
+      files: body.files,
+    });
+  }
+
   if (parts.length === 2) {
     if (method !== "GET") return methodNotAllowed("GET");
     const row = await db.prepare(`${shootSelect} WHERE s.id = ?`).bind(parts[1]).first();
     if (!row) return json({ error: "Shoot not found." }, 404);
-    return json({ shoot: publicShoot(row) });
+    const images = await db
+      .prepare(`SELECT * FROM images WHERE shoot_id = ? ORDER BY seq ASC`)
+      .bind(parts[1])
+      .all();
+    return json({
+      shoot: publicShoot(row),
+      images: (images.results || []).map((image) => publicImage(image)),
+    });
+  }
+
+  if (parts.length === 3 && parts[2] === "complete") {
+    if (method !== "POST") return methodNotAllowed("POST");
+    return completeOriginalIngest({ db, bucket: env.IMAGES, shootId: parts[1] });
+  }
+
+  if (parts.length === 4 && parts[2] === "originals") {
+    if (method !== "PUT") return methodNotAllowed("PUT");
+    const bytes = await readOriginalBytes(request);
+    return storeOriginalObject({
+      db,
+      bucket: env.IMAGES,
+      shootId: parts[1],
+      imageId: parts[3],
+      bytes,
+    });
   }
 
   return json({ error: "Not found." }, 404);
