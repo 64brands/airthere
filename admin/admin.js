@@ -865,11 +865,12 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "ingest-date") {
     if (ingest.busy) return;
-    if (!ingest.calendarOpen) {
-      ingest.calendarOpen = true;
-      ingest.calendarYear = 0;
-      ingest.calendarMonth = 0;
-      ensureCalendarCursor();
+    const alreadyOpen = ingest.calendarOpen;
+    ingest.calendarOpen = true;
+    ingest.calendarYear = 0;
+    ingest.calendarMonth = 0;
+    ensureCalendarCursor();
+    if (!alreadyOpen) {
       render();
       document.querySelector("#ingest-date")?.focus();
     }
@@ -954,6 +955,8 @@ document.addEventListener("change", (event) => {
     ingest.shootDate = checked.value;
     ingest.dateDraft = checked.value;
     ingest.dateError = "";
+    ingest.calendarYear = 0;
+    ingest.calendarMonth = 0;
     render();
     return;
   }
