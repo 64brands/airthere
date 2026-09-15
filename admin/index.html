@@ -25,7 +25,16 @@
         <a href="#shoots">Shoots</a>
         <a class="text-link" href="/">Public site</a>
       </nav>
-      <p class="admin-operator" id="operator" hidden></p>
+      <details class="admin-account" id="account" hidden>
+        <summary>
+          <span id="account-name"></span>
+          <span class="admin-account-caret" aria-hidden="true">▾</span>
+        </summary>
+        <div class="admin-account-menu">
+          <p class="admin-account-role" id="account-role"></p>
+          <button type="button" id="admin-logout">Log out</button>
+        </div>
+      </details>
     </header>
 
     <main class="admin-main">

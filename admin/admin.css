@@ -1,8 +1,64 @@
-.admin-operator {
+.admin-account {
+  position: relative;
   margin: 0;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.88);
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+.admin-account summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.admin-account summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-account-caret {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.admin-account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.7rem);
+  min-width: 11.5rem;
+  padding: 0.9rem 1rem 0.75rem;
+  background: var(--white);
+  border: 1px solid var(--line);
+  color: var(--blue);
+  z-index: 20;
+}
+
+.admin-account-role {
+  margin: 0 0 0.65rem;
+  color: var(--orange);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-account-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0 0.15rem;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-account-menu button:hover {
+  color: var(--orange);
 }
 
 .app-header {
@@ -154,8 +210,102 @@
   font-size: 1.15rem;
 }
 
-.admin-form .field-row {
+.admin-form .field-row,
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+#ingest-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.ingest-drop {
+  position: relative;
+  margin: 1.4rem 0 1.2rem;
+  padding: 2.4rem 1.4rem;
+  border: 1px solid var(--line);
+  color: var(--blue);
+  text-align: center;
+  cursor: pointer;
+}
+
+.ingest-drop.is-compact {
+  margin-top: 0.6rem;
+  padding: 1.2rem 1.4rem;
+}
+
+.ingest-drop-title {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+}
+
+.ingest-drop-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.ingest-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ingest-rejected {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  color: var(--orange);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.ingest-summary {
+  margin: 0 0 1.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+}
+
+.ingest-summary p {
+  margin: 0 0 0.35rem;
+  color: var(--blue);
+}
+
+.ingest-summary .eyebrow {
+  margin-bottom: 0.8rem;
+}
+
+.ingest-filenames {
+  margin-top: 1rem !important;
+  color: var(--muted) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.ingest-filenames span {
+  color: var(--muted);
+  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+}
+
+.text-clear {
+  margin-top: 0.8rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--orange);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .hint {
@@ -198,5 +348,9 @@
     display: flex !important;
     width: 100%;
     gap: 1.1rem;
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
   }
 }
