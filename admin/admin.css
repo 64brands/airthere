@@ -1,6 +1,8 @@
-.admin-body {
-  background: var(--paper);
-  min-height: 100svh;
+.admin-operator {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .app-header {

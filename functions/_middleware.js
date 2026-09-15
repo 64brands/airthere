@@ -1,7 +1,7 @@
-import { getAdminIdentity } from "./_lib/access.js";
+import { authenticateOperationalRequest } from "./_lib/access.js";
 import {
   accessRequiredResponse,
-  notFoundResponse,
+  operatorDeniedResponse,
   previewBlockedResponse,
 } from "./_lib/pages.js";
 import { canonicalHost, isPreviewHost } from "./_lib/preview.js";
@@ -41,8 +41,11 @@ export const onRequest = async (context) => {
   }
 
   if (isAdmin && context.request.method === "GET") {
-    const identity = await getAdminIdentity(context);
+    const identity = await authenticateOperationalRequest(context);
     if (identity.reason === "preview") return previewBlockedResponse();
+    if (identity.reason === "not_an_operator" || identity.reason === "disabled") {
+      return operatorDeniedResponse();
+    }
     if (!identity.ok) return accessRequiredResponse();
     return context.next();
   }

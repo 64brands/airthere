@@ -62,9 +62,30 @@ export const accessRequiredPage = () =>
       <p class="eyebrow">Private operations</p>
       <h1>Admin requires Cloudflare Access.</h1>
       <p class="app-copy">
-        AirThere Admin is protected by Cloudflare Access using Google Workspace.
-        It is not available until Access is enabled on this domain, and it is
-        not available on preview deployments.
+        AirThere Admin is protected by Cloudflare Access. Operational access also
+        requires an active AirThere operator record. It is not available on
+        preview deployments.
+      </p>
+      <p><a class="button" href="/">Back to AirThere</a></p>
+    </main>
+    `,
+  });
+
+export const operatorDeniedPage = () =>
+  documentPage({
+    title: "AirThere Admin",
+    body: `
+    <header class="site-header app-header">
+      <a class="brand" href="/" aria-label="AirThere home">
+        <img src="/assets/airthere-logo.svg" alt="AirThere" />
+      </a>
+    </header>
+    <main class="app-page">
+      <p class="eyebrow">Private operations</p>
+      <h1>This identity is not authorised for AirThere Admin.</h1>
+      <p class="app-copy">
+        Cloudflare Access authenticated the request, but AirThere does not have
+        an active operator record for that identity.
       </p>
       <p><a class="button" href="/">Back to AirThere</a></p>
     </main>
@@ -125,5 +146,6 @@ export const portalPage = ({ customerName, slug, loggedIn, error = "" }) =>
 
 export const notFoundResponse = () => html(notFoundPage(), 404);
 export const accessRequiredResponse = () => html(accessRequiredPage(), 401);
+export const operatorDeniedResponse = () => html(operatorDeniedPage(), 403);
 export const previewBlockedResponse = () => html(previewBlockedPage(), 403);
 export const portalResponse = (opts, status = 200) => html(portalPage(opts), status);

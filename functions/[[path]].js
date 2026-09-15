@@ -2,6 +2,7 @@ import { notFoundResponse, portalResponse } from "./_lib/pages.js";
 import { isPreviewHost } from "./_lib/preview.js";
 import { isReservedSlug } from "./_lib/reserved.js";
 import { readPortalSession } from "./_lib/session.js";
+import { projectByCodeForCustomer, shootForCustomer } from "./_lib/ownership.js";
 import { DATE_PATTERN, PROJECT_CODE_PATTERN, SLUG_PATTERN } from "./_lib/validate.js";
 
 export const onRequest = async (context) => {
@@ -47,18 +48,21 @@ export const onRequest = async (context) => {
   if (customer.status !== "active") return notFoundResponse();
 
   if (segments[1]) {
-    const project = await db
-      .prepare(`SELECT id FROM projects WHERE customer_id = ? AND code = ? AND status = 'active'`)
-      .bind(customer.id, segments[1])
-      .first();
-    if (!project) return notFoundResponse();
+    const project = await projectByCodeForCustomer(db, customer.id, segments[1]);
+    if (!project || project.status !== "active") return notFoundResponse();
 
     if (segments[2]) {
       const shoot = await db
-        .prepare(`SELECT id FROM shoots WHERE project_id = ? AND shoot_date = ?`)
+        .prepare(
+          `SELECT s.id
+           FROM shoots s
+           WHERE s.project_id = ? AND s.shoot_date = ?`
+        )
         .bind(project.id, segments[2])
         .first();
       if (!shoot) return notFoundResponse();
+      const owned = await shootForCustomer(db, customer.id, shoot.id);
+      if (!owned) return notFoundResponse();
     }
   }
 

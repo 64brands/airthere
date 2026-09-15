@@ -1,4 +1,5 @@
 import { requireAdmin } from "../../_lib/access.js";
+import { denyCapability, hasCapability } from "../../_lib/authorize.js";
 import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_lib/http.js";
 import { hashPassword } from "../../_lib/passwords.js";
 import {
@@ -98,6 +99,7 @@ const shootSelect = `
 export const onRequest = async (context) => {
   const auth = await requireAdmin(context);
   if (auth instanceof Response) return auth;
+  const actor = auth.user;
 
   const db = context.env.DB;
   if (!db) return json({ error: "Database is not bound." }, 503);
@@ -107,21 +109,33 @@ export const onRequest = async (context) => {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
 
+  const need = (capability) => {
+    if (hasCapability(actor, capability)) return null;
+    const denied = denyCapability(capability);
+    return json({ error: denied.error }, denied.status);
+  };
+
   try {
     if (parts.length === 0 || (parts.length === 1 && parts[0] === "me")) {
       if (parts[0] === "me") {
         if (method !== "GET") return methodNotAllowed("GET");
-        return json({ authenticated: true });
+        return json({ authenticated: true, user: auth.operator });
       }
     }
 
     if (parts[0] === "customers") {
+      const denied = need(method === "GET" ? "view_operations" : "manage_customers");
+      if (denied) return denied;
       return customers(db, method, parts, request, url);
     }
     if (parts[0] === "projects") {
+      const denied = need(method === "GET" ? "view_operations" : "manage_projects");
+      if (denied) return denied;
       return projects(db, method, parts, request, url);
     }
     if (parts[0] === "shoots") {
+      const denied = need(method === "GET" ? "view_operations" : "manage_shoots");
+      if (denied) return denied;
       return shoots(db, method, parts, request, url);
     }
 

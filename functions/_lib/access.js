@@ -1,4 +1,10 @@
 import { json } from "./http.js";
+import {
+  denyCapability,
+  hasCapability,
+  normalizeEmail,
+  publicOperator,
+} from "./authorize.js";
 import { isLocalHost, isPreviewHost } from "./preview.js";
 
 const jwksCache = new Map();
@@ -32,8 +38,17 @@ const importRsaKey = async (jwk) =>
     ["verify"]
   );
 
+const emailFromAccessPayload = (payload) =>
+  normalizeEmail(payload?.email || payload?.identity?.email || "");
+
+const teamHostname = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/$/, "");
+
 export const verifyAccessJwt = async (token, env) => {
-  const teamDomain = env.CF_ACCESS_TEAM_DOMAIN;
+  const teamDomain = teamHostname(env.CF_ACCESS_TEAM_DOMAIN);
   const aud = env.CF_ACCESS_AUD;
   if (!teamDomain || !aud) {
     return { ok: false, reason: "not_configured" };
@@ -52,7 +67,16 @@ export const verifyAccessJwt = async (token, env) => {
     return { ok: false, reason: "unauthenticated" };
   }
 
+  if (header.alg !== "RS256" || !header.kid) {
+    return { ok: false, reason: "unauthenticated" };
+  }
+
   if (payload.exp && payload.exp * 1000 < Date.now()) {
+    return { ok: false, reason: "unauthenticated" };
+  }
+
+  const expectedIss = `https://${teamDomain}`;
+  if (payload.iss && String(payload.iss).replace(/\/$/, "") !== expectedIss) {
     return { ok: false, reason: "unauthenticated" };
   }
 
@@ -61,7 +85,7 @@ export const verifyAccessJwt = async (token, env) => {
 
   try {
     const keys = await getJwks(teamDomain);
-    const jwk = keys.find((key) => key.kid === header.kid) || keys[0];
+    const jwk = keys.find((key) => key.kid === header.kid);
     if (!jwk) return { ok: false, reason: "unauthenticated" };
     const cryptoKey = await importRsaKey(jwk);
     const ok = await crypto.subtle.verify(
@@ -75,10 +99,31 @@ export const verifyAccessJwt = async (token, env) => {
     return { ok: false, reason: "unauthenticated" };
   }
 
-  return { ok: true, email: payload.email || "" };
+  const email = emailFromAccessPayload(payload);
+  if (!email) return { ok: false, reason: "unauthenticated" };
+  return { ok: true, email };
 };
 
-export const getAdminIdentity = async (context) => {
+const findOperator = async (db, email) => {
+  if (!db || !email) return null;
+  return db
+    .prepare(
+      `SELECT id, email, name, role, status, created_at, updated_at
+       FROM admin_users
+       WHERE email = ?`
+    )
+    .bind(email)
+    .first();
+};
+
+const resolveOperator = async (db, email) => {
+  const user = await findOperator(db, email);
+  if (!user) return { ok: false, reason: "not_an_operator" };
+  if (user.status !== "active") return { ok: false, reason: "disabled" };
+  return { ok: true, user, email: user.email };
+};
+
+export const authenticateOperationalRequest = async (context) => {
   const { request, env } = context;
   const url = new URL(request.url);
 
@@ -87,29 +132,48 @@ export const getAdminIdentity = async (context) => {
   }
 
   if (env.DEV_ADMIN_BYPASS === "local" && isLocalHost(url)) {
-    return { ok: true, email: "", bypass: true };
+    const email = normalizeEmail(env.DEV_ADMIN_EMAIL);
+    if (!email) return { ok: false, reason: "not_configured" };
+    return resolveOperator(env.DB, email);
   }
 
   const token =
     request.headers.get("Cf-Access-Jwt-Assertion") ||
     request.headers.get("cf-access-jwt-assertion");
-  return verifyAccessJwt(token, env);
+  const verified = await verifyAccessJwt(token, env);
+  if (!verified.ok) return verified;
+  return resolveOperator(env.DB, verified.email);
 };
 
-export const requireAdmin = async (context) => {
-  const identity = await getAdminIdentity(context);
-  if (identity.ok) return identity;
-  if (identity.reason === "preview") {
-    return json({ error: "Admin is not available on preview deployments." }, 403);
+export const getAdminIdentity = authenticateOperationalRequest;
+
+export const requireAdmin = async (context, capability) => {
+  const identity = await authenticateOperationalRequest(context);
+  if (!identity.ok) {
+    if (identity.reason === "preview") {
+      return json({ error: "Admin is not available on preview deployments." }, 403);
+    }
+    if (identity.reason === "not_configured") {
+      return json(
+        {
+          error:
+            "Cloudflare Access is not configured yet. Admin APIs will unlock after Access is enabled.",
+        },
+        503
+      );
+    }
+    if (identity.reason === "not_an_operator" || identity.reason === "disabled") {
+      return json({ error: "This identity is not authorised for AirThere Admin." }, 403);
+    }
+    return json({ error: "Unauthorized." }, 401);
   }
-  if (identity.reason === "not_configured") {
-    return json(
-      {
-        error:
-          "Cloudflare Access is not configured yet. Admin APIs will unlock after Access is enabled.",
-      },
-      503
-    );
+
+  if (capability) {
+    if (!hasCapability(identity.user, capability)) {
+      const denied = denyCapability(capability);
+      return json({ error: denied.error }, denied.status);
+    }
   }
-  return json({ error: "Unauthorized." }, 401);
+
+  return { user: identity.user, operator: publicOperator(identity.user) };
 };

@@ -4,12 +4,15 @@ const titleEl = document.querySelector("#view-title");
 const leadEl = document.querySelector("#view-lead");
 
 const state = {
+  user: null,
   customers: [],
   projects: [],
   shoots: [],
   selectedCustomerId: "",
   selectedProjectId: "",
 };
+
+const isSuperAdmin = () => state.user?.role === "super_admin";
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -70,6 +73,7 @@ const renderCustomers = () => {
   leadEl.textContent =
     "Create and maintain customer records. Passwords are hashed and cannot be recovered — only replaced.";
   const selected = state.customers.find((item) => item.id === state.selectedCustomerId);
+  const canManage = isSuperAdmin();
   app.innerHTML = `
     <div class="admin-layout">
       <section class="admin-panel">
@@ -95,8 +99,10 @@ const renderCustomers = () => {
         }
       </section>
       <section class="admin-panel">
-        <h2>${selected ? "Edit customer" : "New customer"}</h2>
-        <form class="admin-form" id="customer-form">
+        <h2>${selected ? (canManage ? "Edit customer" : "Customer") : "New customer"}</h2>
+        ${
+          canManage
+            ? `<form class="admin-form" id="customer-form">
           <input type="hidden" name="id" value="${escapeHtml(selected?.id || "")}" />
           <label>
             <span>Customer name</span>
@@ -128,7 +134,9 @@ const renderCustomers = () => {
             </select>
           </label>
           <button class="button" type="submit">${selected ? "Save customer" : "Create customer"}</button>
-        </form>
+        </form>`
+            : `<p class="empty">Customer records are view-only for this operator role.</p>`
+        }
       </section>
     </div>
   `;
@@ -168,7 +176,9 @@ const renderProjects = () => {
       </section>
       <section class="admin-panel">
         <h2>New project</h2>
-        <form class="admin-form" id="project-form">
+        ${
+          isSuperAdmin()
+            ? `<form class="admin-form" id="project-form">
           <label>
             <span>Customer</span>
             <select name="customer_id" required>${customerOptions(selectedCustomerId)}</select>
@@ -183,7 +193,9 @@ const renderProjects = () => {
           </label>
           <p class="hint">Suggested automatically from the project name. Confirm or edit it before creating the project.</p>
           <button class="button" type="submit">Create project</button>
-        </form>
+        </form>`
+            : `<p class="empty">Project creation is Super Admin only.</p>`
+        }
       </section>
     </div>
   `;
@@ -290,7 +302,13 @@ const render = () => {
 
 const boot = async () => {
   try {
-    await api("/api/admin/me");
+    const me = await api("/api/admin/me");
+    state.user = me.user || null;
+    const operator = document.querySelector("#operator");
+    if (operator && state.user?.name) {
+      operator.hidden = false;
+      operator.textContent = state.user.name;
+    }
     await loadAll();
     render();
   } catch (error) {

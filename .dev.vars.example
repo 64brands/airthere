@@ -1,3 +1,4 @@
 # Local-only. Never commit this file.
 DEV_ADMIN_BYPASS=local
+DEV_ADMIN_EMAIL=paul@64.com.au
 SESSION_SECRET=replace-with-a-long-random-local-value
