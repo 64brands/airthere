@@ -515,18 +515,15 @@ const customerOptions = (selected) =>
     )
     .join("");
 
-const shootStatusLabel = (shoot) => {
+const shootHistoryMeta = (shoot) => {
   const count = liveShootCount(shoot);
-  if (shoot.status === "draft" && count === 0) return "Draft — no images";
+  if (shoot.status === "draft" && count === 0) return "No images";
   if (shoot.status === "uploading") {
-    return count ? `Uploading — originals incomplete · ${count} JPEG${count === 1 ? "" : "s"}` : "Uploading";
+    return count ? `Incomplete · ${count}` : "Uploading";
   }
-  if (shoot.status === "uploaded") {
-    return originalsCountLabel(count);
-  }
-  if (shoot.status === "verified") return `Verified · ${count} images`;
-  if (shoot.status === "published") return `Published · ${count} images`;
-  return `${shoot.status}${count ? ` · ${count} images` : ""}`;
+  if (shoot.status === "verified") return `Verified · ${count}`;
+  if (shoot.status === "published") return `Published · ${count}`;
+  return `${count} original${count === 1 ? "" : "s"}`;
 };
 
 const renderCustomers = () => {
@@ -545,7 +542,9 @@ const renderCustomers = () => {
                 .map(
                   (customer) => `
               <li>
-                <button type="button" data-open-customer="${escapeHtml(customer.id)}">
+                <button type="button" class="${
+                  customer.id === selected?.id ? "is-selected" : ""
+                }" data-open-customer="${escapeHtml(customer.id)}">
                   <strong>${escapeHtml(customer.name)} ${
                     customer.status === "disabled" ? `<span class="badge">Disabled</span>` : ""
                   }</strong>
@@ -626,8 +625,8 @@ const renderProjects = () => {
                   (project) => `
               <li>
                 <strong>${escapeHtml(project.name)}</strong>
-                <span>${escapeHtml(project.code)}${
-                  project.code_locked ? " · code locked" : ""
+                <span><code class="code-chip">${escapeHtml(project.code)}</code>${
+                  project.code_locked ? `<span class="badge">Code locked</span>` : ""
                 }</span>
               </li>`
                 )
@@ -719,9 +718,10 @@ const renderShoots = () => {
                 .map(
                   (shoot) => `
               <li>
-                <button type="button" data-view-shoot="${escapeHtml(shoot.id)}">
-                  <strong>${escapeHtml(shoot.shoot_date_display)}</strong>
-                  <span>${escapeHtml(shootStatusLabel(shoot))} · View Shoot</span>
+                <button type="button" class="shoot-row" data-view-shoot="${escapeHtml(shoot.id)}">
+                  <strong class="shoot-row-date">${escapeHtml(shoot.shoot_date_display)}</strong>
+                  <span class="shoot-row-count">${escapeHtml(shootHistoryMeta(shoot))}</span>
+                  <span class="shoot-row-action">View</span>
                 </button>
               </li>`
                 )
@@ -766,7 +766,7 @@ const renderShoots = () => {
                   required
                   value="${escapeHtml(ingest.dateDraft || shootDate)}"
                 />
-                <button type="button" class="cal-open" data-open-calendar aria-label="Open calendar">
+                <button type="button" class="cal-open button-secondary" data-open-calendar aria-label="Open calendar">
                   Calendar
                 </button>
               </div>
@@ -876,7 +876,7 @@ const renderShootView = (shootId) => {
     app.innerHTML = `
       <section class="admin-panel">
         <p class="form-error">${escapeHtml(shootView.error || "Shoot not found.")}</p>
-        <p><a class="text-link" href="#shoots">Back to Shoots</a></p>
+        <p><a class="text-link shoot-back" href="#shoots">Back to Shoots</a></p>
       </section>`;
     return;
   }
@@ -898,7 +898,7 @@ const renderShootView = (shootId) => {
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
-      <p><a class="text-link" href="#shoots">← Shoots</a></p>
+      <p><a class="text-link shoot-back" href="#shoots">Shoots</a></p>
       <dl class="meta-grid shoot-meta">
         <div><dt>Customer</dt><dd>${escapeHtml(shoot.customer_name)}</dd></div>
         <div><dt>Project</dt><dd>${escapeHtml(shoot.project_name)}</dd></div>
@@ -921,7 +921,7 @@ const renderShootView = (shootId) => {
               />
               <figcaption>
                 <span class="shoot-seq">${String(image.seq).padStart(3, "0")}</span>
-                ${escapeHtml(image.generated_filename)}
+                <span class="shoot-filename">${escapeHtml(image.generated_filename)}</span>
                 ${
                   canRemove
                     ? `<button type="button" class="shoot-remove" data-remove-image="${escapeHtml(
@@ -1007,6 +1007,11 @@ const render = () => {
   else if (view === "shoots" && shootId) renderShootView(shootId);
   else if (view === "shoots") renderShoots();
   else renderCustomers();
+
+  document.querySelectorAll(".app-header nav a[href^='#']").forEach((link) => {
+    const hash = (link.getAttribute("href") || "").replace("#", "");
+    link.classList.toggle("is-current", view === hash);
+  });
 };
 
 const bindAccount = () => {
