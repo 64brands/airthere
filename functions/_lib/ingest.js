@@ -334,3 +334,25 @@ export const completeOriginalIngest = async ({ db, bucket, shootId }) => {
     message: `${images.length} original${images.length === 1 ? "" : "s"} uploaded`,
   });
 };
+
+const safeFilename = (name) =>
+  String(name || "original.jpg").replace(/[^\w.-]+/g, "_");
+
+export const serveOriginalObject = async ({ db, bucket, shootId, imageId }) => {
+  if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+  const image = await db
+    .prepare(`SELECT * FROM images WHERE id = ? AND shoot_id = ?`)
+    .bind(imageId, shootId)
+    .first();
+  if (!image) return json({ error: "Image not found." }, 404);
+  const object = await bucket.get(image.original_key);
+  if (!object) return json({ error: "Original is not in the archive." }, 404);
+  return new Response(object.body, {
+    headers: {
+      "Content-Type": image.content_type || JPEG_CONTENT_TYPE,
+      "Cache-Control": "private, max-age=120",
+      "Content-Disposition": `inline; filename="${safeFilename(image.generated_filename)}"`,
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+};
