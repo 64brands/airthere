@@ -654,10 +654,14 @@ body.lightbox-open {
   overflow: hidden;
 }
 
+.admin-body.lightbox-open .app-header {
+  z-index: 0;
+}
+
 .lightbox {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 200;
 }
 
 .lightbox[hidden] {
