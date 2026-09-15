@@ -989,8 +989,15 @@ const loadAll = async () => {
   }
 };
 
+let activeRouteKey = "";
+
 const render = () => {
   const { view, customerId, shootId } = route();
+  const routeKey = `${view}:${shootId || ""}`;
+  if (activeRouteKey && routeKey !== activeRouteKey) {
+    setStatus("");
+  }
+  activeRouteKey = routeKey;
   if (customerId) state.selectedCustomerId = customerId;
   document.body.classList.toggle("is-shoots", view === "shoots");
   if (!(view === "shoots" && shootId) && shootView.requestedId) {
