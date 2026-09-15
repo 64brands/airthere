@@ -1,0 +1,38 @@
+{
+  "name": "airthere",
+  "compatibility_date": "2026-09-15",
+  "pages_build_output_dir": ".",
+  "vars": {
+    "CANONICAL_HOST": "airthere.com.au"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "airthere",
+      "database_id": "4f80e221-9f3d-46b4-9493-dfd9bec8bcae"
+    }
+  ],
+  // Private R2 archive — create these buckets in the Cloudflare dashboard, then
+  // uncomment. Do not enable a public r2.dev URL or public bucket access.
+  // "r2_buckets": [
+  //   { "binding": "IMAGES", "bucket_name": "airthere-images" }
+  // ],
+  "env": {
+    "preview": {
+      "vars": {
+        "CANONICAL_HOST": "airthere.com.au",
+        "PREVIEW_LOCKDOWN": "true"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "airthere-preview",
+          "database_id": "faa4d482-cadd-4f1d-8bbb-1a3d067c5d53"
+        }
+      ]
+      // "r2_buckets": [
+      //   { "binding": "IMAGES", "bucket_name": "airthere-images-preview" }
+      // ]
+    }
+  }
+}

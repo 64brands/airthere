@@ -1,0 +1,115 @@
+import { json } from "./http.js";
+import { isLocalHost, isPreviewHost } from "./preview.js";
+
+const jwksCache = new Map();
+
+const b64urlToBytes = (value) => {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+};
+
+const parseJsonB64 = (value) => JSON.parse(new TextDecoder().decode(b64urlToBytes(value)));
+
+const getJwks = async (teamDomain) => {
+  const cached = jwksCache.get(teamDomain);
+  if (cached && cached.expires > Date.now()) return cached.keys;
+  const response = await fetch(`https://${teamDomain}/cdn-cgi/access/certs`);
+  if (!response.ok) throw new Error("Unable to load Access signing keys.");
+  const data = await response.json();
+  jwksCache.set(teamDomain, { keys: data.keys || [], expires: Date.now() + 60 * 60 * 1000 });
+  return data.keys || [];
+};
+
+const importRsaKey = async (jwk) =>
+  crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+
+export const verifyAccessJwt = async (token, env) => {
+  const teamDomain = env.CF_ACCESS_TEAM_DOMAIN;
+  const aud = env.CF_ACCESS_AUD;
+  if (!teamDomain || !aud) {
+    return { ok: false, reason: "not_configured" };
+  }
+  if (!token) return { ok: false, reason: "unauthenticated" };
+
+  const parts = String(token).split(".");
+  if (parts.length !== 3) return { ok: false, reason: "unauthenticated" };
+
+  let header;
+  let payload;
+  try {
+    header = parseJsonB64(parts[0]);
+    payload = parseJsonB64(parts[1]);
+  } catch {
+    return { ok: false, reason: "unauthenticated" };
+  }
+
+  if (payload.exp && payload.exp * 1000 < Date.now()) {
+    return { ok: false, reason: "unauthenticated" };
+  }
+
+  const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  if (!audiences.includes(aud)) return { ok: false, reason: "unauthenticated" };
+
+  try {
+    const keys = await getJwks(teamDomain);
+    const jwk = keys.find((key) => key.kid === header.kid) || keys[0];
+    if (!jwk) return { ok: false, reason: "unauthenticated" };
+    const cryptoKey = await importRsaKey(jwk);
+    const ok = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      b64urlToBytes(parts[2]),
+      new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
+    );
+    if (!ok) return { ok: false, reason: "unauthenticated" };
+  } catch {
+    return { ok: false, reason: "unauthenticated" };
+  }
+
+  return { ok: true, email: payload.email || "" };
+};
+
+export const getAdminIdentity = async (context) => {
+  const { request, env } = context;
+  const url = new URL(request.url);
+
+  if (isPreviewHost(url) || env.PREVIEW_LOCKDOWN === "true") {
+    return { ok: false, reason: "preview" };
+  }
+
+  if (env.DEV_ADMIN_BYPASS === "local" && isLocalHost(url)) {
+    return { ok: true, email: "", bypass: true };
+  }
+
+  const token =
+    request.headers.get("Cf-Access-Jwt-Assertion") ||
+    request.headers.get("cf-access-jwt-assertion");
+  return verifyAccessJwt(token, env);
+};
+
+export const requireAdmin = async (context) => {
+  const identity = await getAdminIdentity(context);
+  if (identity.ok) return identity;
+  if (identity.reason === "preview") {
+    return json({ error: "Admin is not available on preview deployments." }, 403);
+  }
+  if (identity.reason === "not_configured") {
+    return json(
+      {
+        error:
+          "Cloudflare Access is not configured yet. Admin APIs will unlock after Access is enabled.",
+      },
+      503
+    );
+  }
+  return json({ error: "Unauthorized." }, 401);
+};

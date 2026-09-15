@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": [
+    "/assets/*",
+    "/styles.css",
+    "/script.js",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/admin/admin.css",
+    "/admin/admin.js"
+  ]
+}
