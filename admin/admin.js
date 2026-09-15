@@ -693,7 +693,7 @@ const renderShoots = () => {
     <div class="admin-layout">
       <section class="admin-panel">
         <h2>Shoot history</h2>
-        <div class="field-row">
+        <div class="field-row history-filters">
           <label>
             <span>Customer</span>
             <select id="shoot-customer-filter">${customerOptions(selectedCustomerId)}</select>
@@ -898,7 +898,7 @@ const renderShootView = (shootId) => {
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
-      <p><a class="text-link shoot-back" href="#shoots">Shoots</a></p>
+      <p><a class="text-link shoot-back" href="#shoots">Back to Shoots</a></p>
       <dl class="meta-grid shoot-meta">
         <div><dt>Customer</dt><dd>${escapeHtml(shoot.customer_name)}</dd></div>
         <div><dt>Project</dt><dd>${escapeHtml(shoot.project_name)}</dd></div>
