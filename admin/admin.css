@@ -217,14 +217,116 @@
   gap: 1rem;
 }
 
+.ingest-form {
+  max-width: none;
+  margin-top: 0;
+}
+
 #ingest-date {
   font-variant-numeric: tabular-nums;
 }
 
+.ingest-date-wrap {
+  position: relative;
+  margin-bottom: 0.4rem;
+}
+
+.ingest-date-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.cal-open {
+  min-height: 42px;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ingest-calendar {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% - 0.2rem);
+  left: 0;
+  width: min(22rem, 100%);
+  padding: 0.85rem 0.9rem 1rem;
+  background: var(--white);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 30px rgba(23, 32, 45, 0.08);
+}
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.cal-header p {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.cal-nav {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.cal-weekdays,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.15rem;
+}
+
+.cal-weekdays span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.cal-day {
+  min-height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.cal-day.is-empty {
+  cursor: default;
+}
+
+.cal-day.is-selected,
+.cal-day:not(.is-empty):hover {
+  background: rgba(225, 95, 40, 0.12);
+  color: var(--orange);
+  font-weight: 700;
+}
+
 .ingest-drop {
   position: relative;
-  margin: 1.4rem 0 1.2rem;
-  padding: 2.4rem 1.4rem;
+  margin: 0.7rem 0 0.8rem;
+  padding: 1.15rem 1rem;
   border: 1px solid var(--line);
   color: var(--blue);
   text-align: center;
@@ -232,59 +334,60 @@
 }
 
 .ingest-drop.is-compact {
-  margin-top: 0.6rem;
-  padding: 1.2rem 1.4rem;
+  margin-top: 0.45rem;
+  padding: 0.85rem 1rem;
+}
+
+.ingest-drop.is-over {
+  border-color: var(--orange);
+  background: rgba(225, 95, 40, 0.06);
 }
 
 .ingest-drop-title {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.25rem;
   font-weight: 700;
 }
 
 .ingest-drop-copy {
   margin: 0;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
 }
 
 .ingest-file-input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .ingest-rejected {
-  margin: 0 0 1rem;
+  margin: 0 0 0.7rem;
   padding: 0;
   list-style: none;
   color: var(--orange);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
 .ingest-summary {
-  margin: 0 0 1.4rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--line);
+  margin: 0 0 0.6rem;
+  padding-top: 0.15rem;
 }
 
 .ingest-summary p {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.25rem;
   color: var(--blue);
 }
 
-.ingest-summary .eyebrow {
-  margin-bottom: 0.8rem;
-}
-
 .ingest-filenames {
-  margin-top: 1rem !important;
+  margin-top: 0.35rem !important;
   color: var(--muted) !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82rem;
-  line-height: 1.7;
+  font-size: 0.78rem;
+  line-height: 1.55;
 }
 
 .ingest-filenames span {
@@ -293,14 +396,132 @@
 }
 
 .text-clear {
-  margin-top: 0.8rem;
+  margin-top: 0.45rem;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--orange);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.shoot-view > .text-link,
+.shoot-view p .text-link {
+  display: inline-block;
+  margin-bottom: 0.8rem;
+  color: var(--orange);
+  font-size: 0.88rem;
+}
+
+.shoot-meta {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.shoot-iso {
+  display: inline-block;
+  margin-left: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.shoot-view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.9rem;
+}
+
+.shoot-view-card {
+  margin: 0;
+}
+
+.shoot-view-card img {
+  width: 100%;
+  height: 160px;
+  object-fit: contain;
+  background: var(--paper);
+}
+
+.shoot-view-card figcaption {
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.shoot-seq {
+  display: block;
+  color: var(--orange);
+  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.admin-body.is-shoots .admin-main {
+  padding: 1.1rem clamp(1rem, 3vw, 2.4rem) 2rem;
+}
+
+.admin-body.is-shoots .eyebrow {
+  margin-bottom: 0.25rem;
+}
+
+.admin-body.is-shoots #view-title {
+  margin: 0 0 0.25rem;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+.admin-body.is-shoots .admin-lead {
+  max-width: none;
+  margin: 0 0 0.25rem;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.admin-body.is-shoots .admin-status {
+  min-height: 1.15rem;
+  margin: 0 0 0.2rem;
+}
+
+.admin-body.is-shoots .admin-layout {
+  margin-top: 0.7rem;
+  gap: 1.1rem;
+}
+
+.admin-body.is-shoots .admin-panel {
+  padding: 0.95rem 1rem 1rem;
+}
+
+.admin-body.is-shoots .admin-panel h2 {
+  margin: 0 0 0.7rem;
+  font-size: 1.05rem;
+}
+
+.admin-body.is-shoots label {
+  margin-bottom: 0.65rem;
+}
+
+.admin-body.is-shoots label > span {
+  margin-bottom: 0.25rem;
+}
+
+.admin-body.is-shoots .admin-list button {
+  padding: 0.65rem 0;
+}
+
+.admin-body.is-shoots .admin-list strong {
+  font-size: 0.95rem;
+}
+
+.admin-body.is-shoots .button {
+  min-height: 44px;
+  padding: 0.6rem 1.1rem;
 }
 
 .button:disabled {
@@ -309,10 +530,10 @@
 }
 
 .hint {
-  margin: -0.4rem 0 1rem;
+  margin: -0.15rem 0 0.7rem;
   color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.5;
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .empty {
@@ -329,6 +550,12 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+@media (max-width: 1100px) {
+  .shoot-meta {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -352,5 +579,9 @@
 
   .field-row {
     grid-template-columns: 1fr;
+  }
+
+  .ingest-date-control {
+    grid-template-columns: 1fr auto;
   }
 }

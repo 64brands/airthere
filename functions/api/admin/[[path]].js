@@ -4,6 +4,7 @@ import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_l
 import {
   completeOriginalIngest,
   publicImage,
+  serveOriginalObject,
   startOriginalIngest,
   storeOriginalObject,
 } from "../../_lib/ingest.js";
@@ -531,7 +532,15 @@ const shoots = async (env, db, method, parts, request, url) => {
   }
 
   if (parts.length === 4 && parts[2] === "originals") {
-    if (method !== "PUT") return methodNotAllowed("PUT");
+    if (method === "GET") {
+      return serveOriginalObject({
+        db,
+        bucket: env.IMAGES,
+        shootId: parts[1],
+        imageId: parts[3],
+      });
+    }
+    if (method !== "PUT") return methodNotAllowed("GET, PUT");
     const bytes = await readOriginalBytes(request);
     return storeOriginalObject({
       db,

@@ -26,7 +26,34 @@ const ingest = {
   files: [],
   rejected: [],
   busy: false,
+  calendarOpen: false,
+  calendarYear: 0,
+  calendarMonth: 0,
 };
+
+const shootView = {
+  requestedId: "",
+  loading: false,
+  error: "",
+  shoot: null,
+  images: [],
+};
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const COMPLETE_SHOOT_STATUSES = new Set(["uploaded", "verified", "published"]);
 
@@ -154,6 +181,10 @@ const uploadShoot = async () => {
     });
     ingest.files = [];
     ingest.rejected = [];
+    ingest.shootDate = "";
+    ingest.dateDraft = "";
+    ingest.dateError = "";
+    ingest.calendarOpen = false;
     await loadAll();
     ingest.busy = false;
     render();
@@ -224,6 +255,75 @@ const parseIsoShootDate = (value) => {
   return { value: date };
 };
 
+const utcTodayIso = () => {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    now.getUTCDate()
+  ).padStart(2, "0")}`;
+};
+
+const ensureCalendarCursor = () => {
+  const source = parseIsoShootDate(ingest.shootDate || ingest.dateDraft);
+  const iso = source.value || utcTodayIso();
+  const [year, month] = iso.split("-").map(Number);
+  if (!ingest.calendarYear || !ingest.calendarMonth) {
+    ingest.calendarYear = year;
+    ingest.calendarMonth = month;
+  }
+};
+
+const shiftCalendar = (delta) => {
+  ensureCalendarCursor();
+  const date = new Date(Date.UTC(ingest.calendarYear, ingest.calendarMonth - 1 + delta, 1));
+  ingest.calendarYear = date.getUTCFullYear();
+  ingest.calendarMonth = date.getUTCMonth() + 1;
+};
+
+const renderCalendar = (selectedIso) => {
+  ensureCalendarCursor();
+  const year = ingest.calendarYear;
+  const month = ingest.calendarMonth;
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const jsWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const leading = (jsWeekday + 6) % 7;
+  const cells = [];
+  for (let i = 0; i < leading; i += 1) cells.push("<span class=\"cal-day is-empty\"></span>");
+  for (let day = 1; day <= days; day += 1) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const selected = iso === selectedIso ? " is-selected" : "";
+    cells.push(
+      `<button type="button" class="cal-day${selected}" data-pick-date="${iso}">${day}</button>`
+    );
+  }
+  return `
+    <div class="ingest-calendar" role="dialog" aria-label="Shoot Date calendar">
+      <div class="cal-header">
+        <button type="button" class="cal-nav" data-cal-shift="-1" aria-label="Previous month">‹</button>
+        <p>${MONTH_NAMES[month - 1]} ${year}</p>
+        <button type="button" class="cal-nav" data-cal-shift="1" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-weekdays">${WEEKDAY_LABELS.map((label) => `<span>${label}</span>`).join("")}</div>
+      <div class="cal-grid">${cells.join("")}</div>
+    </div>
+  `;
+};
+
+const collectDroppedFiles = (dataTransfer) => {
+  if (dataTransfer?.files && dataTransfer.files.length) {
+    return Array.from(dataTransfer.files);
+  }
+  const files = [];
+  const items = dataTransfer?.items;
+  if (!items) return files;
+  for (const item of items) {
+    if (item.kind === "file") {
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+  }
+  return files;
+};
+
 const isJpegFile = (file) => {
   const name = String(file?.name || "").toLowerCase();
   const type = String(file?.type || "").toLowerCase();
@@ -267,8 +367,12 @@ const logoutFromAdmin = () => {
 
 const route = () => {
   const hash = location.hash.replace(/^#/, "") || "customers";
-  const [view, id] = hash.split("/");
-  return { view, id };
+  const parts = hash.split("/").filter(Boolean);
+  return {
+    view: parts[0] || "customers",
+    customerId: parts[0] === "customers" ? parts[1] || "" : "",
+    shootId: parts[0] === "shoots" && parts[1] === "view" ? parts[2] || "" : "",
+  };
 };
 
 const customerOptions = (selected) =>
@@ -430,8 +534,7 @@ const renderProjects = () => {
 
 const renderShoots = () => {
   titleEl.textContent = "Shoots";
-  leadEl.textContent =
-    "Choose the customer, project and Shoot Date, then add the JPEGs. Shoot Date is the day the photography happened on site.";
+  leadEl.textContent = "Customer, project, Shoot Date, then JPEGs. Shoot Date is the day the photography happened.";
   const selectedCustomerId = state.selectedCustomerId || state.customers[0]?.id || "";
   const customer = state.customers.find((item) => item.id === selectedCustomerId);
   const projects = state.projects.filter((project) => project.customer_id === selectedCustomerId);
@@ -486,8 +589,10 @@ const renderShoots = () => {
                 .map(
                   (shoot) => `
               <li>
-                <strong>${escapeHtml(shoot.shoot_date_display)}</strong>
-                <span>${escapeHtml(shootStatusLabel(shoot))}</span>
+                <button type="button" data-view-shoot="${escapeHtml(shoot.id)}">
+                  <strong>${escapeHtml(shoot.shoot_date_display)}</strong>
+                  <span>${escapeHtml(shootStatusLabel(shoot))} · View Shoot</span>
+                </button>
               </li>`
                 )
                 .join("")}</ul>`
@@ -497,44 +602,54 @@ const renderShoots = () => {
       <section class="admin-panel">
         <h2>New shoot</h2>
         <form class="admin-form ingest-form" id="ingest-form">
-          <label>
-            <span>Customer</span>
-            <select id="ingest-customer" required>${customerOptions(selectedCustomerId)}</select>
-          </label>
-          <label>
-            <span>Project</span>
-            <select id="ingest-project" required>
-              ${projects
-                .map(
-                  (item) =>
-                    `<option value="${escapeHtml(item.id)}" ${
-                      item.id === selectedProjectId ? "selected" : ""
-                    }>${escapeHtml(item.name)}</option>`
-                )
-                .join("")}
-            </select>
-          </label>
-          <label>
-            <span>Shoot Date</span>
-            <input
-              type="text"
-              id="ingest-date"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              maxlength="10"
-              placeholder="YYYY-MM-DD"
-              required
-              value="${escapeHtml(ingest.dateDraft || shootDate)}"
-            />
-          </label>
+          <div class="field-row">
+            <label>
+              <span>Customer</span>
+              <select id="ingest-customer" required>${customerOptions(selectedCustomerId)}</select>
+            </label>
+            <label>
+              <span>Project</span>
+              <select id="ingest-project" required>
+                ${projects
+                  .map(
+                    (item) =>
+                      `<option value="${escapeHtml(item.id)}" ${
+                        item.id === selectedProjectId ? "selected" : ""
+                      }>${escapeHtml(item.name)}</option>`
+                  )
+                  .join("")}
+              </select>
+            </label>
+          </div>
+          <div class="ingest-date-wrap">
+            <label>
+              <span>Shoot Date</span>
+              <div class="ingest-date-control">
+                <input
+                  type="text"
+                  id="ingest-date"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="10"
+                  placeholder="YYYY-MM-DD"
+                  required
+                  value="${escapeHtml(ingest.dateDraft || shootDate)}"
+                />
+                <button type="button" class="cal-open" data-open-calendar aria-label="Open calendar">
+                  Calendar
+                </button>
+              </div>
+            </label>
+            ${ingest.calendarOpen ? renderCalendar(shootDate) : ""}
+          </div>
           ${
             ingest.dateError
               ? `<p class="form-error" role="alert">${escapeHtml(ingest.dateError)}</p>`
               : `<p class="hint">${
                   shootDate
-                    ? `Shoot Date: ${escapeHtml(displayShootDate(shootDate))}. Historical dates are normal.`
-                    : "Enter the photography date as YYYY-MM-DD. Historical dates are normal."
+                    ? `Shoot Date: ${escapeHtml(displayShootDate(shootDate))}`
+                    : "Use the calendar or type YYYY-MM-DD. Historical dates are normal."
                 }</p>`
           }
           ${
@@ -547,16 +662,14 @@ const renderShoots = () => {
           ${
             jpegCount
               ? `<div class="ingest-summary">
-            <p class="eyebrow">Ready to upload</p>
-            <p><strong>${escapeHtml(customer?.name || "")}</strong></p>
-            <p><strong>${escapeHtml(project?.name || "")}</strong></p>
-            <p><strong>${escapeHtml(displayShootDate(shootDate))}</strong></p>
-            <p><strong>${jpegCount} JPEG image${jpegCount === 1 ? "" : "s"}</strong></p>
+            <p><strong>${jpegCount} JPEG image${jpegCount === 1 ? "" : "s"}</strong> · ${escapeHtml(
+                displayShootDate(shootDate) || "set Shoot Date"
+              )}</p>
             <p class="ingest-filenames">${previewNames.map((name) => escapeHtml(name)).join("<br />")}${
-                  jpegCount > previewCount
-                    ? `<br /><span>and ${jpegCount - previewCount} more</span>`
-                    : ""
-                }</p>
+                jpegCount > previewCount
+                  ? `<br /><span>and ${jpegCount - previewCount} more</span>`
+                  : ""
+              }</p>
             <button class="text-clear" type="button" id="ingest-clear">Clear images</button>
           </div>`
               : ""
@@ -577,10 +690,93 @@ const renderShoots = () => {
               : ""
           }
           <button class="button" type="button" id="ingest-upload" ${ready ? "" : "disabled"}>Upload Shoot</button>
-          <p class="hint">Original JPEGs are stored privately. Standard images and archive verification are not part of this step.</p>
+          <p class="hint">Original JPEGs stay private. Standard images and archive verification come later.</p>
         </form>
       </section>
     </div>
+  `;
+};
+
+const loadShootView = async (shootId) => {
+  try {
+    const data = await api(`/api/admin/shoots/${shootId}`);
+    if (shootView.requestedId !== shootId) return;
+    shootView.shoot = data.shoot || null;
+    shootView.images = data.images || [];
+  } catch (error) {
+    if (shootView.requestedId !== shootId) return;
+    shootView.error = error.message;
+    shootView.shoot = null;
+    shootView.images = [];
+  } finally {
+    if (shootView.requestedId === shootId) {
+      shootView.loading = false;
+      render();
+    }
+  }
+};
+
+const renderShootView = (shootId) => {
+  if (shootView.requestedId !== shootId) {
+    shootView.requestedId = shootId;
+    shootView.loading = true;
+    shootView.error = "";
+    shootView.shoot = null;
+    shootView.images = [];
+    loadShootView(shootId);
+  }
+
+  const shoot = shootView.shoot;
+  titleEl.textContent = shoot ? `Shoot · ${shoot.shoot_date_display}` : "Shoot";
+  leadEl.textContent = "Private originals for visual confirmation. These are the archive JPEGs, displayed smaller in the browser.";
+
+  if (shootView.loading) {
+    app.innerHTML = `<section class="admin-panel"><p class="empty">Loading shoot…</p></section>`;
+    return;
+  }
+  if (shootView.error || !shoot) {
+    app.innerHTML = `
+      <section class="admin-panel">
+        <p class="form-error">${escapeHtml(shootView.error || "Shoot not found.")}</p>
+        <p><a class="text-link" href="#shoots">Back to Shoots</a></p>
+      </section>`;
+    return;
+  }
+
+  const count = shootView.images.length;
+  app.innerHTML = `
+    <section class="admin-panel shoot-view">
+      <p><a class="text-link" href="#shoots">← Shoots</a></p>
+      <dl class="meta-grid shoot-meta">
+        <div><dt>Customer</dt><dd>${escapeHtml(shoot.customer_name)}</dd></div>
+        <div><dt>Project</dt><dd>${escapeHtml(shoot.project_name)}</dd></div>
+        <div><dt>Shoot Date</dt><dd>${escapeHtml(shoot.shoot_date_display)} <span class="shoot-iso">${escapeHtml(
+          shoot.shoot_date
+        )}</span></dd></div>
+        <div><dt>Images</dt><dd>${count} original${count === 1 ? "" : "s"}</dd></div>
+      </dl>
+      ${
+        count
+          ? `<div class="shoot-view-grid">${shootView.images
+              .map(
+                (image) => `
+            <figure class="shoot-view-card">
+              <img
+                src="/api/admin/shoots/${escapeHtml(shoot.id)}/originals/${escapeHtml(image.id)}"
+                alt="${escapeHtml(image.generated_filename)}"
+                loading="lazy"
+                decoding="async"
+              />
+              <figcaption>
+                <span class="shoot-seq">${String(image.seq).padStart(3, "0")}</span>
+                ${escapeHtml(image.generated_filename)}
+              </figcaption>
+            </figure>`
+              )
+              .join("")}</div>`
+          : `<p class="empty">No originals stored for this shoot yet.</p>`
+      }
+    </section>
   `;
 };
 
@@ -599,9 +795,11 @@ const loadAll = async () => {
 };
 
 const render = () => {
-  const { view, id } = route();
-  if (id) state.selectedCustomerId = id;
+  const { view, customerId, shootId } = route();
+  if (customerId) state.selectedCustomerId = customerId;
+  document.body.classList.toggle("is-shoots", view === "shoots");
   if (view === "projects") renderProjects();
+  else if (view === "shoots" && shootId) renderShootView(shootId);
   else if (view === "shoots") renderShoots();
   else renderCustomers();
 };
@@ -646,11 +844,64 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const drop = event.target.closest("#ingest-drop");
-  if (drop && !event.target.closest("#ingest-files")) {
-    if (ingest.busy) return;
-    document.querySelector("#ingest-files")?.click();
+  const viewShoot = event.target.closest("[data-view-shoot]");
+  if (viewShoot) {
+    event.preventDefault();
+    location.hash = `shoots/view/${viewShoot.getAttribute("data-view-shoot")}`;
     return;
+  }
+
+  if (event.target.closest("[data-open-calendar]")) {
+    if (ingest.busy) return;
+    ingest.calendarOpen = !ingest.calendarOpen;
+    if (ingest.calendarOpen) {
+      ingest.calendarYear = 0;
+      ingest.calendarMonth = 0;
+      ensureCalendarCursor();
+    }
+    render();
+    return;
+  }
+
+  if (event.target.id === "ingest-date") {
+    if (ingest.busy) return;
+    if (!ingest.calendarOpen) {
+      ingest.calendarOpen = true;
+      ingest.calendarYear = 0;
+      ingest.calendarMonth = 0;
+      ensureCalendarCursor();
+      render();
+      document.querySelector("#ingest-date")?.focus();
+    }
+    return;
+  }
+
+  const shift = event.target.closest("[data-cal-shift]");
+  if (shift) {
+    event.preventDefault();
+    shiftCalendar(Number(shift.getAttribute("data-cal-shift")));
+    ingest.calendarOpen = true;
+    render();
+    return;
+  }
+
+  const picked = event.target.closest("[data-pick-date]");
+  if (picked) {
+    event.preventDefault();
+    const checked = parseIsoShootDate(picked.getAttribute("data-pick-date"));
+    if (!checked.error) {
+      ingest.shootDate = checked.value;
+      ingest.dateDraft = checked.value;
+      ingest.dateError = "";
+    }
+    ingest.calendarOpen = false;
+    render();
+    return;
+  }
+
+  if (ingest.calendarOpen && !event.target.closest(".ingest-date-wrap")) {
+    ingest.calendarOpen = false;
+    render();
   }
 
   if (event.target.id === "ingest-clear") {
@@ -725,23 +976,35 @@ document.addEventListener("input", (event) => {
   }
 });
 
-document.addEventListener("dragover", (event) => {
-  if (!event.target.closest("#ingest-drop")) return;
+document.addEventListener("dragenter", (event) => {
+  const drop = event.target.closest("#ingest-drop");
+  if (!drop) return;
   event.preventDefault();
-  event.target.closest("#ingest-drop").classList.add("is-over");
+  drop.classList.add("is-over");
+});
+
+document.addEventListener("dragover", (event) => {
+  const drop = event.target.closest("#ingest-drop");
+  if (!drop) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  drop.classList.add("is-over");
 });
 
 document.addEventListener("dragleave", (event) => {
   const drop = event.target.closest("#ingest-drop");
-  if (drop) drop.classList.remove("is-over");
+  if (!drop) return;
+  if (drop.contains(event.relatedTarget)) return;
+  drop.classList.remove("is-over");
 });
 
 document.addEventListener("drop", (event) => {
   const drop = event.target.closest("#ingest-drop");
   if (!drop || ingest.busy) return;
   event.preventDefault();
+  event.stopPropagation();
   drop.classList.remove("is-over");
-  addJpegFiles(event.dataTransfer?.files);
+  addJpegFiles(collectDroppedFiles(event.dataTransfer));
   render();
 });
 
