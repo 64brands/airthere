@@ -206,6 +206,14 @@ body.portal-body .skip-link:focus {
   line-height: 1.02;
 }
 
+.portal-heading.portal-project-title {
+  margin: 0 0 clamp(1.35rem, 2.2vw, 2rem);
+  font-size: clamp(2.05rem, 1.35vw + 1.55rem, 2.85rem);
+  font-weight: 600;
+  letter-spacing: -0.038em;
+  line-height: 1.16;
+}
+
 .portal-sub {
   margin: 0 0 2.1rem;
   color: var(--muted);
@@ -532,6 +540,10 @@ body.lightbox-open {
 
   .portal-heading {
     font-size: clamp(1.85rem, 8vw, 2.5rem);
+  }
+
+  .portal-heading.portal-project-title {
+    font-size: clamp(2.05rem, 4.6vw + 0.85rem, 2.55rem);
   }
 }
 

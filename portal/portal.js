@@ -88,6 +88,13 @@
     `;
   };
 
+  const projectTitleHtml = (value) => {
+    const escaped = escapeHtml(value);
+    const idx = escaped.lastIndexOf(" ");
+    if (idx === -1) return escaped;
+    return `${escaped.slice(0, idx)}\u00a0${escaped.slice(idx + 1)}`;
+  };
+
   const renderShoots = (payload) => {
     const project = payload.project || {};
     const shoots = payload.shoots || [];
@@ -99,7 +106,7 @@
           { href: `/${slug}`, label: customerName },
           { label: heading },
         ])}
-        <h1 class="portal-heading">${escapeHtml(heading)}</h1>
+        <h1 class="portal-heading portal-project-title">${projectTitleHtml(heading)}</h1>
         ${empty("No project records are available yet.")}
         </section>
       `;
@@ -111,7 +118,7 @@
         { href: `/${slug}`, label: customerName },
         { label: heading },
       ])}
-      <h1 class="portal-heading">${escapeHtml(heading)}</h1>
+      <h1 class="portal-heading portal-project-title">${projectTitleHtml(heading)}</h1>
       <div class="portal-shoot-grid">
         ${shoots
           .map((shoot) => {
