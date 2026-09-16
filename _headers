@@ -13,3 +13,7 @@
 /media/*
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store
+
+/portal/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store

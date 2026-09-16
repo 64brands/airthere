@@ -13,7 +13,9 @@ const isAssetRequest = (pathname) =>
   pathname === "/robots.txt" ||
   pathname === "/sitemap.xml" ||
   pathname === "/admin/admin.css" ||
-  pathname === "/admin/admin.js";
+  pathname === "/admin/admin.js" ||
+  pathname.startsWith("/portal/") ||
+  pathname === "/assets/lightbox.js";
 
 export const onRequest = async (context) => {
   const url = new URL(context.request.url);

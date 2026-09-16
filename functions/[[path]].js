@@ -18,7 +18,9 @@ export const onRequest = async (context) => {
     url.pathname === "/admin/" ||
     url.pathname.startsWith("/admin/") ||
     url.pathname.startsWith("/api/") ||
-    url.pathname.startsWith("/media/")
+    url.pathname.startsWith("/media/") ||
+    url.pathname.startsWith("/portal/") ||
+    url.pathname === "/assets/lightbox.js"
   ) {
     return context.next();
   }
@@ -54,13 +56,15 @@ export const onRequest = async (context) => {
     if (segments[2]) {
       const shoot = await db
         .prepare(
-          `SELECT s.id
+          `SELECT s.id, s.status
            FROM shoots s
            WHERE s.project_id = ? AND s.shoot_date = ?`
         )
         .bind(project.id, segments[2])
         .first();
-      if (!shoot) return notFoundResponse();
+      if (!shoot || (shoot.status !== "verified" && shoot.status !== "published")) {
+        return notFoundResponse();
+      }
       const owned = await shootForCustomer(db, customer.id, shoot.id);
       if (!owned) return notFoundResponse();
     }
@@ -71,9 +75,9 @@ export const onRequest = async (context) => {
   const errorParam = url.searchParams.get("error");
   const error =
     errorParam === "pending"
-      ? "This portal password has not been set yet."
+      ? "This portal is not available yet."
       : errorParam
-        ? "Unable to sign in."
+        ? "The password is incorrect."
         : "";
 
   return portalResponse({
@@ -81,5 +85,7 @@ export const onRequest = async (context) => {
     slug: customer.slug,
     loggedIn,
     error,
+    projectCode: segments[1] || "",
+    shootDate: segments[2] || "",
   });
 };

@@ -1,7 +1,7 @@
 /**
  * Reusable AirThere image viewer.
- * Admin uses authenticated original routes today.
- * A later client gallery can pass Standard 2000px URLs into the same open().
+ * Admin passes authenticated original URLs.
+ * The client gallery passes authenticated Standard 2000px URLs.
  */
 (() => {
   const state = {
@@ -76,9 +76,11 @@
     if (!item) return;
     const ui = els();
     ui.image.src = item.src;
-    ui.image.alt = item.filename || "";
-    ui.seq.textContent = padSeq(item.seq);
-    ui.name.textContent = item.filename || "";
+    ui.image.alt = item.alt || item.label || item.filename || "Project photograph";
+    ui.seq.textContent = item.counter || padSeq(item.seq);
+    ui.seq.hidden = !ui.seq.textContent;
+    ui.name.textContent = item.label || item.filename || "";
+    ui.name.hidden = !ui.name.textContent;
     const last = state.items.length - 1;
     ui.prev.hidden = state.items.length < 2 || state.index <= 0;
     ui.next.hidden = state.items.length < 2 || state.index >= last;

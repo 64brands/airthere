@@ -8,6 +8,7 @@
     "/robots.txt",
     "/sitemap.xml",
     "/admin/admin.css",
-    "/admin/admin.js"
+    "/admin/admin.js",
+    "/portal/*"
   ]
 }
