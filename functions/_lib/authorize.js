@@ -10,6 +10,7 @@ export const CAPABILITIES = {
   view_operations: [ROLES.SUPER_ADMIN, ROLES.MANAGER],
   manage_shoots: [ROLES.SUPER_ADMIN, ROLES.MANAGER],
   delete_shoot_images: [ROLES.SUPER_ADMIN],
+  delete_shoots: [ROLES.SUPER_ADMIN],
   manage_customers: [ROLES.SUPER_ADMIN],
   manage_projects: [ROLES.SUPER_ADMIN],
   manage_customer_access: [ROLES.SUPER_ADMIN],
@@ -22,13 +23,6 @@ export const normalizeEmail = (value) =>
     .trim()
     .toLowerCase();
 
-export const publicOperator = (user) => ({
-  id: user.id,
-  name: user.name,
-  role: user.role,
-  status: user.status,
-});
-
 export const hasCapability = (user, capability) => {
   const allowed = CAPABILITIES[capability];
   if (!user || !allowed) return false;
@@ -36,11 +30,23 @@ export const hasCapability = (user, capability) => {
   return allowed.includes(user.role);
 };
 
+export const capabilitiesFor = (user) =>
+  Object.keys(CAPABILITIES).filter((capability) => hasCapability(user, capability));
+
+export const publicOperator = (user) => ({
+  id: user.id,
+  name: user.name,
+  role: user.role,
+  status: user.status,
+  capabilities: capabilitiesFor(user),
+});
+
 export const denyCapability = (capability) => {
   const message =
     capability === "manage_managers" ||
     capability === "system_settings" ||
     capability === "delete_shoot_images" ||
+    capability === "delete_shoots" ||
     capability === "manage_customers" ||
     capability === "manage_projects" ||
     capability === "manage_customer_access"

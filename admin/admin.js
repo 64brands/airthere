@@ -43,6 +43,8 @@ const shootView = {
   recoverRejected: [],
   busy: false,
   actionError: "",
+  deleteOpen: false,
+  deleteConfirmText: "",
 };
 
 const MONTH_NAMES = [
@@ -64,6 +66,11 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const COMPLETE_SHOOT_STATUSES = new Set(["uploaded", "verified", "published"]);
 
 const isSuperAdmin = () => state.user?.role === "super_admin";
+
+const canDeleteShoot = () =>
+  Array.isArray(state.user?.capabilities)
+    ? state.user.capabilities.includes("delete_shoots")
+    : isSuperAdmin();
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -489,6 +496,8 @@ const resetShootView = () => {
   shootView.recoverRejected = [];
   shootView.busy = false;
   shootView.actionError = "";
+  shootView.deleteOpen = false;
+  shootView.deleteConfirmText = "";
 };
 
 const addToShoot = async () => {
@@ -611,6 +620,35 @@ const removeShootImage = async (imageId) => {
     await loadAll();
     await loadShootView(shoot.id);
     setStatus(originalsCountLabel(shootView.images.length));
+  } catch (error) {
+    shootView.busy = false;
+    shootView.actionError = error.message;
+    render();
+    setStatus(error.message, true);
+  }
+};
+
+const deleteShootFromView = async () => {
+  const shoot = shootView.shoot;
+  if (!shoot || shootView.busy || !canDeleteShoot()) return;
+  if (String(shootView.deleteConfirmText || "").trim() !== "DELETE") return;
+
+  shootView.busy = true;
+  shootView.actionError = "";
+  const submit = document.querySelector("#shoot-delete-submit");
+  if (submit) submit.disabled = true;
+
+  try {
+    setStatus("Deleting shoot…");
+    await api(`/api/admin/shoots/${shoot.id}`, {
+      method: "DELETE",
+      body: { confirm: "DELETE" },
+    });
+    await loadAll();
+    resetShootView();
+    setStatus("");
+    if (location.hash.replace(/^#/, "") === "shoots") render();
+    else location.hash = "shoots";
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
@@ -1175,6 +1213,8 @@ const renderShootView = (shootId) => {
     shootView.recoverRejected = [];
     shootView.busy = false;
     shootView.actionError = "";
+    shootView.deleteOpen = false;
+    shootView.deleteConfirmText = "";
     loadShootView(shootId);
   }
 
@@ -1405,6 +1445,49 @@ const renderShootView = (shootId) => {
       </div>`
           : ""
       }
+      ${
+        canDeleteShoot()
+          ? `<div class="shoot-danger">
+        ${
+          shootView.deleteOpen
+            ? `<div class="shoot-delete-confirm">
+          <p class="shoot-delete-kicker">Delete Shoot</p>
+          <p class="shoot-delete-warning">This permanently removes the Shoot, all Image records, all full-resolution originals, and all Standard images. This cannot be undone.</p>
+          <label class="shoot-delete-label">
+            <span>Type DELETE to confirm</span>
+            <input
+              id="shoot-delete-confirm"
+              type="text"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              value="${escapeHtml(shootView.deleteConfirmText)}"
+              ${shootView.busy ? "disabled" : ""}
+            />
+          </label>
+          ${
+            shootView.actionError
+              ? `<p class="form-error">${escapeHtml(shootView.actionError)}</p>`
+              : ""
+          }
+          <div class="shoot-delete-actions">
+            <button class="text-clear" type="button" id="shoot-delete-cancel" ${
+              shootView.busy ? "disabled" : ""
+            }>Cancel</button>
+            <button class="button-secondary shoot-delete-submit" type="button" id="shoot-delete-submit" ${
+              shootView.busy || String(shootView.deleteConfirmText || "").trim() !== "DELETE"
+                ? "disabled"
+                : ""
+            }>Delete Shoot</button>
+          </div>
+        </div>`
+            : `<button class="shoot-delete-open" type="button" id="shoot-delete-open" ${
+                shootView.busy ? "disabled" : ""
+              }>Delete Shoot</button>`
+        }
+      </div>`
+          : ""
+      }
     </section>
   `;
 };
@@ -1627,6 +1710,33 @@ document.addEventListener("click", (event) => {
   if (event.target.id === "shoot-generate-standards") {
     event.preventDefault();
     generateShootStandardsFromView();
+    return;
+  }
+
+  if (event.target.id === "shoot-delete-open") {
+    event.preventDefault();
+    if (shootView.busy || !canDeleteShoot()) return;
+    shootView.deleteOpen = true;
+    shootView.deleteConfirmText = "";
+    shootView.actionError = "";
+    render();
+    document.querySelector("#shoot-delete-confirm")?.focus();
+    return;
+  }
+
+  if (event.target.id === "shoot-delete-cancel") {
+    event.preventDefault();
+    if (shootView.busy) return;
+    shootView.deleteOpen = false;
+    shootView.deleteConfirmText = "";
+    shootView.actionError = "";
+    render();
+    return;
+  }
+
+  if (event.target.id === "shoot-delete-submit") {
+    event.preventDefault();
+    deleteShootFromView();
   }
 });
 
@@ -1701,6 +1811,14 @@ document.addEventListener("change", (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.matches("#project-form [name=code]")) {
     event.target.dataset.touched = "true";
+  }
+  if (event.target.id === "shoot-delete-confirm") {
+    shootView.deleteConfirmText = event.target.value;
+    const submit = document.querySelector("#shoot-delete-submit");
+    if (submit) {
+      submit.disabled =
+        shootView.busy || String(shootView.deleteConfirmText || "").trim() !== "DELETE";
+    }
   }
 });
 
@@ -1816,4 +1934,10 @@ document.addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("hashchange", render);
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  if (event.target?.id !== "shoot-delete-confirm") return;
+  event.preventDefault();
+  deleteShootFromView();
+});
 boot();
