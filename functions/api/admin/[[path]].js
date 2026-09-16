@@ -178,7 +178,7 @@ export const onRequest = async (context) => {
     if (parts[0] === "customers") {
       const denied = need(method === "GET" ? "view_operations" : "manage_customers");
       if (denied) return denied;
-      return customers(db, method, parts, request, url);
+      return await customers(db, method, parts, request, url);
     }
     if (parts[0] === "projects") {
       const denied = need(method === "GET" ? "view_operations" : "manage_projects");

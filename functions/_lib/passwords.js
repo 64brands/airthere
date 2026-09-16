@@ -13,7 +13,7 @@ const b64ToBytes = (value) => {
   return bytes;
 };
 
-const ITERATIONS = 210_000;
+const ITERATIONS = 100_000;
 
 export const hashPassword = async (password) => {
   const salt = crypto.getRandomValues(new Uint8Array(16));
