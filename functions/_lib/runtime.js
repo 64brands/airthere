@@ -3,6 +3,7 @@
 export const bindingPresence = (env) => ({
   db: Boolean(env?.DB),
   images: Boolean(env?.IMAGES),
+  image_transformer: Boolean(env?.IMAGE_TRANSFORMER),
 });
 
 export const secretPresence = (env) => ({

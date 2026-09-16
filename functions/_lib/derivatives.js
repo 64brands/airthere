@@ -2,12 +2,8 @@ import { json } from "./http.js";
 import { webObjectKey } from "./names.js";
 
 const JPEG_CONTENT_TYPE = "image/jpeg";
-
-export const STANDARD_LONG_EDGE = 2000;
-export const STANDARD_JPEG_QUALITY = 85;
 export const MAX_STANDARD_SOURCE_BYTES = 20 * 1024 * 1024;
-
-const toStream = (bytes) => new Blob([bytes]).stream();
+const TRANSFORM_URL = "https://airthere-image-transform/v1/standard";
 
 export const standardStatus = (image) => {
   if (image?.web_key && (image.web_status === "ready" || !image.web_status)) return "ready";
@@ -36,20 +32,41 @@ const needsPendingStandard = (image, skip) =>
 const needsFailedRetry = (image, skip) =>
   standardStatus(image) === "failed" && !skip.has(image.id);
 
-const encodeJpeg = async (handle) =>
-  handle.output({ format: "image/jpeg", quality: STANDARD_JPEG_QUALITY });
-
-const resizeOptions = (width, height) => {
-  const w = Number(width || 0);
-  const h = Number(height || 0);
-  if (w < 1 || h < 1) return {};
-  if (w >= h && w > STANDARD_LONG_EDGE) return { width: STANDARD_LONG_EDGE };
-  if (h > w && h > STANDARD_LONG_EDGE) return { height: STANDARD_LONG_EDGE };
-  if (w === h && w > STANDARD_LONG_EDGE) return { width: STANDARD_LONG_EDGE };
-  return {};
+const transformerError = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const payload = await response.json().catch(() => null);
+    if (payload?.error) return String(payload.error);
+  }
+  const text = await response.text().catch(() => "");
+  return text ? text.slice(0, 300) : `Transformer returned ${response.status}.`;
 };
 
-export const generateStandardForImage = async ({ db, bucket, transform, archive, image }) => {
+const requestStandardJpeg = async (transformer, source) => {
+  const response = await transformer.fetch(TRANSFORM_URL, {
+    method: "POST",
+    headers: { "content-type": JPEG_CONTENT_TYPE },
+    body: source,
+  });
+  if (!response.ok) throw new Error(await transformerError(response));
+  const webBytes = new Uint8Array(await response.arrayBuffer());
+  if (!webBytes.byteLength) throw new Error("Standard JPEG was empty.");
+  return {
+    bytes: webBytes,
+    sourceWidth: Number(response.headers.get("x-airthere-source-width") || 0),
+    sourceHeight: Number(response.headers.get("x-airthere-source-height") || 0),
+    width: Number(response.headers.get("x-airthere-width") || 0),
+    height: Number(response.headers.get("x-airthere-height") || 0),
+  };
+};
+
+export const generateStandardForImage = async ({
+  db,
+  bucket,
+  transformer,
+  archive,
+  image,
+}) => {
   const current = standardStatus(image);
   if (current === "ready" && image.web_key) {
     const head = await bucket.head(image.web_key);
@@ -74,8 +91,8 @@ export const generateStandardForImage = async ({ db, bucket, transform, archive,
     };
   }
 
-  if (!transform) {
-    throw new Error("Image transform is not bound.");
+  if (!transformer) {
+    throw new Error("Image transformer is not bound.");
   }
 
   const webKey = webObjectKey(
@@ -98,28 +115,9 @@ export const generateStandardForImage = async ({ db, bucket, transform, archive,
       throw new Error("Original is larger than the 20 MB Standard processing limit.");
     }
 
-    const info = await transform.info(toStream(source));
-    const sourceWidth = Number(info.width || 0);
-    const sourceHeight = Number(info.height || 0);
-    const ops = resizeOptions(sourceWidth, sourceHeight);
-    let handle = transform.input(toStream(source));
-    if (ops.width || ops.height) handle = handle.transform(ops);
-    const encoded = await encodeJpeg(handle);
-    const response = encoded.response();
-    const webBytes = new Uint8Array(await response.arrayBuffer());
-    if (!webBytes.byteLength) throw new Error("Standard JPEG was empty.");
+    const encoded = await requestStandardJpeg(transformer, source);
 
-    let webWidth = ops.width || sourceWidth;
-    let webHeight = ops.height || sourceHeight;
-    try {
-      const webInfo = await transform.info(toStream(webBytes));
-      webWidth = Number(webInfo.width || webWidth);
-      webHeight = Number(webInfo.height || webHeight);
-    } catch {
-      /* local low-fidelity info is enough when present */
-    }
-
-    await bucket.put(webKey, webBytes, {
+    await bucket.put(webKey, encoded.bytes, {
       httpMetadata: { contentType: JPEG_CONTENT_TYPE },
     });
     await db
@@ -133,11 +131,11 @@ export const generateStandardForImage = async ({ db, bucket, transform, archive,
       skipped: false,
       status: "ready",
       web_key: webKey,
-      width: webWidth,
-      height: webHeight,
-      byte_size: webBytes.byteLength,
-      source_width: sourceWidth,
-      source_height: sourceHeight,
+      width: encoded.width,
+      height: encoded.height,
+      byte_size: encoded.bytes.byteLength,
+      source_width: encoded.sourceWidth,
+      source_height: encoded.sourceHeight,
     };
   } catch (error) {
     await db.prepare(`UPDATE images SET web_status = 'failed' WHERE id = ?`).bind(image.id).run();
@@ -154,13 +152,13 @@ export const generateStandardForImage = async ({ db, bucket, transform, archive,
 export const generateShootStandards = async ({
   db,
   bucket,
-  transform,
+  transformer,
   shootId,
   retry = false,
   skipIds = [],
 }) => {
   if (!bucket) return json({ error: "Image archive is not bound." }, 503);
-  if (!transform) return json({ error: "Image transform is not bound." }, 503);
+  if (!transformer) return json({ error: "Image transformer is not bound." }, 503);
 
   const archive = await db
     .prepare(
@@ -197,7 +195,7 @@ export const generateShootStandards = async ({
   const processed = await generateStandardForImage({
     db,
     bucket,
-    transform,
+    transformer,
     archive,
     image: queued[0],
   });

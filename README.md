@@ -35,7 +35,7 @@ npx wrangler d1 execute airthere --local --file=migrations/0001_init.sql
 npx wrangler d1 execute airthere --local --file=migrations/0002_seed_ovpg.sql
 npx wrangler d1 execute airthere --local --file=migrations/0003_admin_users.sql
 cp .dev.vars.example .dev.vars
-npx wrangler pages dev .
+npx wrangler pages dev . -c wrangler.jsonc -c workers/airthere-image-transform/wrangler.jsonc
 ```
 
 `.dev.vars` is gitignored. Set `DEV_ADMIN_BYPASS=local` and `DEV_ADMIN_EMAIL` only for localhost. Local bypass still requires a matching active `admin_users` row.
@@ -102,12 +102,14 @@ Until Access is configured, `/admin` shows that Access is required. After Access
 
 ## Cloudflare configuration
 
-Paul completed the following in the 64brands account. Wrangler is the source of truth for D1/R2 bindings. Pages **secrets stay in the dashboard** and are not committed.
+Wrangler is the source of truth for D1, R2, and the internal image-transform service binding. Pages **secrets stay in the dashboard** and are not committed. The `airthere-image-transform` Worker must be deployed to the 64brands account before production Pages can call it.
 
-| Environment | D1 | R2 (`env.IMAGES`) | Config / secrets |
-|---|---|---|---|
-| Production | `DB` → `airthere` | `airthere-images` | `CANONICAL_HOST`; secrets `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, `SESSION_SECRET`, `RESEND_API_KEY` |
-| Preview | `DB` → `airthere-preview` | `airthere-images-preview` | `CANONICAL_HOST`, `PREVIEW_LOCKDOWN=true`; secrets `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, `SESSION_SECRET` |
+| Environment | D1 | R2 (`env.IMAGES`) | Standard transform | Config / secrets |
+|---|---|---|---|---|
+| Production | `DB` → `airthere` | `airthere-images` | Service `IMAGE_TRANSFORMER` → Worker `airthere-image-transform` | `CANONICAL_HOST`; secrets `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, `SESSION_SECRET`, `RESEND_API_KEY` |
+| Preview | `DB` → `airthere-preview` | `airthere-images-preview` | Same internal Worker (JPEG bytes only; no R2 access) | `CANONICAL_HOST`, `PREVIEW_LOCKDOWN=true`; secrets `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, `SESSION_SECRET` |
+
+The dedicated Worker holds the Cloudflare Images binding `TRANSFORM`. Pages cannot declare `"images"` in `wrangler.jsonc`. The Worker has no `workers.dev` route and is reached only through the service binding.
 
 Both R2 buckets are private: no `r2.dev` public URL, no public bucket access, no public custom domain.
 
