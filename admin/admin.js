@@ -212,8 +212,22 @@ const uploadShoot = async () => {
     ingest.calendarOpen = false;
     await loadAll();
     ingest.busy = false;
-    location.hash = `shoots/view/${started.shoot_id}`;
-    setStatus(verified.message || completed.message || `${completed.image_count || total} originals in this shoot`);
+    try {
+      const standards = await generateMissingStandards(started.shoot_id);
+      location.hash = `shoots/view/${started.shoot_id}`;
+      setStatus(
+        standardImagesLabel({
+          standard_expected: standards?.standard_expected,
+          standard_ready: standards?.standard_ready,
+        }) ||
+          verified.message ||
+          completed.message ||
+          `${completed.image_count || total} originals in this shoot`
+      );
+    } catch (error) {
+      location.hash = `shoots/view/${started.shoot_id}`;
+      setStatus(error.message, true);
+    }
   } catch (error) {
     ingest.busy = false;
     try {
@@ -426,6 +440,37 @@ const addRecoverFiles = (fileList) => {
 const originalsCountLabel = (count) =>
   `${count} original${count === 1 ? "" : "s"} in this shoot`;
 
+const standardImagesLabel = (shoot) => {
+  const expected = Number(shoot?.standard_expected || 0);
+  const ready = Number(shoot?.standard_ready || 0);
+  if (!expected) return "";
+  if (ready === expected) return `Standard images: ${ready} of ${expected} ready ✓`;
+  return `Standard images: ${ready} of ${expected} ready`;
+};
+
+const generateMissingStandards = async (shootId, retryFailed = false) => {
+  const skipIds = [];
+  let last = null;
+  for (let index = 0; index < 220; index += 1) {
+    last = await api(`/api/admin/shoots/${shootId}/standards`, {
+      method: "POST",
+      body: { retry: retryFailed, skip_ids: skipIds },
+    });
+    const item = last.processed?.[0];
+    if (!item) break;
+    if (item.status === "failed") skipIds.push(item.image_id);
+    const expected = Number(last.standard_expected || 0);
+    const ready = Number(last.standard_ready || 0);
+    if (expected) setStatus(`Standard images: ${ready} of ${expected} ready`);
+    if (Number(last.remaining_pending || 0) === 0) {
+      if (!retryFailed) break;
+      if (Number(last.standard_failed || 0) === 0) break;
+      if (skipIds.length >= Number(last.standard_failed || 0)) break;
+    }
+  }
+  return last;
+};
+
 const liveShootCount = (shoot, images = []) => {
   if (Array.isArray(images) && images.length) return images.length;
   if (shoot && shoot.image_count != null) return Number(shoot.image_count || 0);
@@ -522,6 +567,14 @@ const addToShoot = async () => {
     shootView.addFiles = [];
     shootView.addRejected = [];
     shootView.busy = false;
+    try {
+      await generateMissingStandards(shoot.id);
+    } catch (error) {
+      await loadAll();
+      await loadShootView(shoot.id);
+      setStatus(error.message, true);
+      return;
+    }
     await loadAll();
     await loadShootView(shoot.id);
     setStatus(verified.message || completed.message || originalsCountLabel(shootView.images.length));
@@ -621,6 +674,14 @@ const continueShootUpload = async () => {
     shootView.recoverFiles = [];
     shootView.recoverRejected = [];
     shootView.busy = false;
+    try {
+      await generateMissingStandards(shoot.id);
+    } catch (error) {
+      await loadAll();
+      await loadShootView(shoot.id);
+      setStatus(error.message, true);
+      return;
+    }
     await loadAll();
     await loadShootView(shoot.id);
     setStatus(verified.message || originalsCountLabel(shootView.images.length));
@@ -648,10 +709,43 @@ const verifyShootArchive = async () => {
       method: "POST",
       body: {},
     });
+    try {
+      await generateMissingStandards(shoot.id);
+    } catch (error) {
+      shootView.busy = false;
+      await loadAll();
+      await loadShootView(shoot.id);
+      setStatus(error.message, true);
+      return;
+    }
     shootView.busy = false;
     await loadAll();
     await loadShootView(shoot.id);
     setStatus(verified.message || originalsCountLabel(shootView.images.length));
+  } catch (error) {
+    shootView.busy = false;
+    shootView.actionError = error.message;
+    try {
+      await loadShootView(shoot.id);
+    } catch {
+      render();
+    }
+    setStatus(error.message, true);
+  }
+};
+
+const generateShootStandardsFromView = async () => {
+  const shoot = shootView.shoot;
+  if (!shoot || shootView.busy) return;
+  shootView.busy = true;
+  shootView.actionError = "";
+  try {
+    setStatus("Generating Standard images…");
+    const result = await generateMissingStandards(shoot.id, true);
+    shootView.busy = false;
+    await loadAll();
+    await loadShootView(shoot.id);
+    setStatus(standardImagesLabel(result) || standardImagesLabel(shootView.shoot));
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
@@ -1143,6 +1237,22 @@ const renderShootView = (shootId) => {
           <p class="archive-count">${verifiedCount} of ${count} originals verified</p>
         </div>`
           : "";
+  const showGenerateStandards =
+    Number(shoot.standard_expected || 0) > 0 &&
+    Number(shoot.standard_ready || 0) < Number(shoot.standard_expected || 0);
+  const standardsLine = standardImagesLabel(shoot);
+  const standardsBanner = standardsLine
+    ? `<div class="archive-standards">
+        <p class="archive-count">${escapeHtml(standardsLine)}</p>
+        ${
+          showGenerateStandards
+            ? `<button class="button-secondary" type="button" id="shoot-generate-standards" ${
+                shootView.busy ? "disabled" : ""
+              }>Generate Standard Images</button>`
+            : ""
+        }
+      </div>`
+    : "";
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
@@ -1156,6 +1266,7 @@ const renderShootView = (shootId) => {
         <div><dt>Images</dt><dd>${count} original${count === 1 ? "" : "s"}</dd></div>
       </dl>
       ${archiveBanner}
+      ${standardsBanner}
       ${
         count
           ? `<div class="shoot-view-grid">${shootView.images
@@ -1504,6 +1615,12 @@ document.addEventListener("click", (event) => {
   if (event.target.id === "shoot-verify") {
     event.preventDefault();
     verifyShootArchive();
+    return;
+  }
+
+  if (event.target.id === "shoot-generate-standards") {
+    event.preventDefault();
+    generateShootStandardsFromView();
   }
 });
 

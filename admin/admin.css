@@ -870,6 +870,24 @@ body.lightbox-open {
   font-weight: 600;
 }
 
+.archive-standards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1.2rem;
+}
+
+.archive-standards .archive-count {
+  margin: 0;
+}
+
+.archive-standards .button-secondary {
+  min-height: 2.2rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.78rem;
+}
+
 .shoot-missing-thumb {
   display: grid;
   place-items: center;

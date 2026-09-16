@@ -78,6 +78,8 @@ export const publicImage = (row, extra = {}) => ({
   byte_size: Number(row.byte_size || 0),
   created_at: row.created_at,
   verified_at: row.verified_at || null,
+  web_key: row.web_key || null,
+  web_status: row.web_status || null,
   ...extra,
 });
 
@@ -342,6 +344,20 @@ export const storeOriginalObject = async ({ db, bucket, shootId, imageId, bytes 
     httpMetadata: { contentType: JPEG_CONTENT_TYPE },
   });
 
+  if (image.web_key) {
+    try {
+      await bucket.delete(image.web_key);
+    } catch {
+      /* stale Standard object should not block storing the original */
+    }
+  }
+  await db
+    .prepare(`UPDATE images SET web_key = NULL, web_status = NULL WHERE id = ?`)
+    .bind(image.id)
+    .run();
+  image.web_key = null;
+  image.web_status = null;
+
   if (image.verified_at) {
     await db.prepare(`UPDATE images SET verified_at = NULL WHERE id = ?`).bind(image.id).run();
     image.verified_at = null;
@@ -525,6 +541,13 @@ export const removeOriginalImage = async ({ db, bucket, shootId, imageId }) => {
     await bucket.delete(image.original_key);
   } catch {
     /* missing archive object should not block removing the record */
+  }
+  if (image.web_key) {
+    try {
+      await bucket.delete(image.web_key);
+    } catch {
+      /* missing Standard object should not block removing the record */
+    }
   }
 
   const highWater = Math.max(Number(shoot.max_seq || 0), Number(image.seq || 0));

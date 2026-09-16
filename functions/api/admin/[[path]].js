@@ -12,6 +12,7 @@ import {
   verifyOriginalArchive,
   loadShootImages,
 } from "../../_lib/ingest.js";
+import { generateShootStandards, standardSummary } from "../../_lib/derivatives.js";
 import {
   filenameDateFromShootDate,
   generatedFilename,
@@ -72,6 +73,10 @@ const publicShoot = (row) => ({
   verified_count: Number(row.verified_count || 0),
   stored_count:
     row.stored_count == null ? Number(row.image_count || 0) : Number(row.stored_count),
+  standard_expected: Number(row.standard_expected || 0),
+  standard_ready: Number(row.standard_ready || 0),
+  standard_pending: Number(row.standard_pending || 0),
+  standard_failed: Number(row.standard_failed || 0),
   cover_image_id: row.cover_image_id,
   created_at: row.created_at,
   created_at_display: formatTimestamp(row.created_at),
@@ -547,7 +552,7 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
     const inspected = await inspectOriginals(env.IMAGES, images);
     const storedCount = inspected.filter((image) => image.stored).length;
     return json({
-      shoot: publicShoot({ ...row, stored_count: storedCount }),
+      shoot: publicShoot({ ...row, stored_count: storedCount, ...standardSummary(inspected) }),
       images: inspected,
     });
   }
@@ -560,6 +565,19 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
   if (parts.length === 3 && parts[2] === "verify") {
     if (method !== "POST") return methodNotAllowed("POST");
     return verifyOriginalArchive({ db, bucket: env.IMAGES, shootId: parts[1] });
+  }
+
+  if (parts.length === 3 && parts[2] === "standards") {
+    if (method !== "POST") return methodNotAllowed("POST");
+    const body = (await readJson(request)) || {};
+    return generateShootStandards({
+      db,
+      bucket: env.IMAGES,
+      transform: env.TRANSFORM,
+      shootId: parts[1],
+      retry: Boolean(body.retry),
+      skipIds: Array.isArray(body.skip_ids) ? body.skip_ids : [],
+    });
   }
 
   if (parts.length === 3 && parts[2] === "originals") {
