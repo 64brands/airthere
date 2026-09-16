@@ -1751,16 +1751,18 @@ document.addEventListener("drop", (event) => {
 document.addEventListener("submit", async (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
-  if (form.id === "ingest-form") {
+  // Named controls shadow form.id (this form has <input name="id">).
+  const formId = form.getAttribute("id");
+  if (formId === "ingest-form") {
     event.preventDefault();
     return;
   }
-  if (!["customer-form", "project-form"].includes(form.id)) return;
+  if (!["customer-form", "project-form"].includes(formId)) return;
   event.preventDefault();
   setStatus("Saving…");
   const data = Object.fromEntries(new FormData(form));
   try {
-    if (form.id === "customer-form") {
+    if (formId === "customer-form") {
       const passwordInput = form.querySelector("#customer-password");
       const password =
         passwordInput instanceof HTMLInputElement ? String(passwordInput.value || "") : "";
@@ -1801,13 +1803,13 @@ document.addEventListener("submit", async (event) => {
         );
       }
     }
-    if (form.id === "project-form") {
+    if (formId === "project-form") {
       await api("/api/admin/projects", { method: "POST", body: data });
       setStatus("Project created.");
     }
     await loadAll();
     render();
-    if (form.id !== "customer-form") form.reset();
+    if (formId !== "customer-form") form.reset();
   } catch (error) {
     setStatus(error.message, true);
   }
