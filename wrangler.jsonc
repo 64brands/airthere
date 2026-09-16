@@ -22,9 +22,14 @@
       "preview_bucket_name": "airthere-images-preview"
     }
   ],
-  "images": {
-    "binding": "TRANSFORM"
-  },
+  // Pages cannot bind Cloudflare Images. Standard JPEGs are transformed by
+  // the internal airthere-image-transform Worker through this service binding.
+  "services": [
+    {
+      "binding": "IMAGE_TRANSFORMER",
+      "service": "airthere-image-transform"
+    }
+  ],
   "env": {
     "preview": {
       "vars": {
@@ -44,9 +49,12 @@
           "bucket_name": "airthere-images-preview"
         }
       ],
-      "images": {
-        "binding": "TRANSFORM"
-      }
+      "services": [
+        {
+          "binding": "IMAGE_TRANSFORMER",
+          "service": "airthere-image-transform"
+        }
+      ]
     }
   }
 }

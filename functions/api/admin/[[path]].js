@@ -573,7 +573,7 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
     return generateShootStandards({
       db,
       bucket: env.IMAGES,
-      transform: env.TRANSFORM,
+      transformer: env.IMAGE_TRANSFORMER,
       shootId: parts[1],
       retry: Boolean(body.retry),
       skipIds: Array.isArray(body.skip_ids) ? body.skip_ids : [],

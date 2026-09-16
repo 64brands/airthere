@@ -1,0 +1,9 @@
+{
+  "name": "airthere-image-transform",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-15",
+  "workers_dev": false,
+  "images": {
+    "binding": "TRANSFORM"
+  }
+}
