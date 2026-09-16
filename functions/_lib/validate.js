@@ -91,6 +91,18 @@ export const formatTimestamp = (iso) => {
   }).format(date);
 };
 
+export const formatArchiveDate = (iso) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Australia/Sydney",
+  }).format(date);
+};
+
 export const validateStatus = (value, allowed) => {
   const status = clean(value, 32).toLowerCase();
   if (!allowed.includes(status)) {
