@@ -15,7 +15,14 @@ const escapeHtml = (value) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
-export const documentPage = ({ title, robots = "noindex, nofollow", body, extraHead = "" }) => `<!doctype html>
+export const documentPage = ({
+  title,
+  robots = "noindex, nofollow",
+  body,
+  extraHead = "",
+  bodyClass = "",
+  bodyAttrs = "",
+}) => `<!doctype html>
 <html lang="en-AU">
   <head>
     <meta charset="UTF-8" />
@@ -26,7 +33,7 @@ export const documentPage = ({ title, robots = "noindex, nofollow", body, extraH
     ${fontLinks}
     ${extraHead}
   </head>
-  <body>
+  <body${bodyClass ? ` class="${escapeHtml(bodyClass)}"` : ""}${bodyAttrs ? ` ${bodyAttrs}` : ""}>
     ${body}
   </body>
 </html>`;
@@ -109,36 +116,67 @@ export const previewBlockedPage = () =>
     `,
   });
 
-export const portalPage = ({ customerName, slug, loggedIn, error = "" }) =>
+export const portalPage = ({
+  customerName,
+  slug,
+  loggedIn,
+  error = "",
+  projectCode = "",
+  shootDate = "",
+}) =>
   documentPage({
     title: `${customerName} — AirThere`,
-    extraHead: `<link rel="stylesheet" href="/admin/admin.css" />`,
+    extraHead: `
+    <link rel="stylesheet" href="/portal/portal.css" />
+    <script src="/assets/lightbox.js" defer></script>
+    <script src="/portal/portal.js" defer></script>
+    `,
+    bodyClass: "portal-body",
+    bodyAttrs: `data-slug="${escapeHtml(slug)}" data-name="${escapeHtml(
+      customerName
+    )}" data-authed="${loggedIn ? "true" : "false"}" data-project="${escapeHtml(
+      projectCode
+    )}" data-date="${escapeHtml(shootDate)}"`,
     body: `
-    <header class="site-header app-header">
-      <a class="brand" href="/" aria-label="AirThere home">
+    <a class="skip-link" href="#portal-main">Skip to content</a>
+    <header class="portal-header">
+      <a class="portal-brand" href="/${escapeHtml(slug)}" aria-label="AirThere">
         <img src="/assets/airthere-logo.svg" alt="AirThere" />
       </a>
-    </header>
-    <main class="app-page portal-page">
-      <p class="eyebrow">${escapeHtml(customerName)}</p>
-      <h1>${loggedIn ? "Portal" : "Client portal"}</h1>
       ${
         loggedIn
-          ? `<p class="app-copy">You are signed in. Project history and shoot galleries will appear here in a later AirThere release.</p>
-             <form method="post" action="/api/portal/logout">
-               <input type="hidden" name="slug" value="${escapeHtml(slug)}" />
-               <button class="button" type="submit">Sign out</button>
-             </form>`
-          : `<p class="app-copy">This portal is private. Enter the shared AirThere password for this project group.</p>
-             ${error ? `<p class="form-error" role="alert">${escapeHtml(error)}</p>` : ""}
-             <form class="portal-form" method="post" action="/api/portal/login">
-               <input type="hidden" name="slug" value="${escapeHtml(slug)}" />
-               <label>
-                 <span>Password</span>
-                 <input type="password" name="password" autocomplete="current-password" required />
-               </label>
-               <button class="button" type="submit">Enter portal</button>
-             </form>`
+          ? `<div class="portal-header-meta">
+               <p class="portal-header-customer">${escapeHtml(customerName)}</p>
+               <form method="post" action="/api/portal/logout">
+                 <input type="hidden" name="slug" value="${escapeHtml(slug)}" />
+                 <button class="portal-signout" type="submit">Sign out</button>
+               </form>
+             </div>`
+          : ""
+      }
+    </header>
+    <main id="portal-main" class="portal-main">
+      ${
+        loggedIn
+          ? `<div id="portal-app" class="portal-app"><p class="portal-quiet">Loading…</p></div>`
+          : `<section class="portal-login">
+               <p class="portal-kicker">Private record</p>
+               <h1>${escapeHtml(customerName)}</h1>
+               ${error ? `<p class="portal-error" role="alert">${escapeHtml(error)}</p>` : ""}
+               <form class="portal-login-form" method="post" action="/api/portal/login">
+                 <input type="hidden" name="slug" value="${escapeHtml(slug)}" />
+                 <label class="sr-only" for="portal-password">Password</label>
+                 <input
+                   id="portal-password"
+                   type="password"
+                   name="password"
+                   autocomplete="current-password"
+                   placeholder="Password"
+                   required
+                 />
+                 <button class="button" type="submit">View project</button>
+               </form>
+             </section>`
       }
     </main>
     `,
