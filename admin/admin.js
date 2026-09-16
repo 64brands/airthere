@@ -861,19 +861,25 @@ const renderCustomers = () => {
           </label>
           <label>
             <span>Customer slug</span>
-            <input type="text" name="slug" required maxlength="48" value="${escapeHtml(
+            <input type="text" name="slug" required maxlength="48" autocomplete="username" value="${escapeHtml(
               selected?.slug || ""
             )}" />
           </label>
           <p class="hint">Used in the portal URL, for example airthere.com.au/ovpg. Reserved website paths cannot be used.</p>
           <label>
-            <span>${selected ? "Replace password" : "Customer password"}</span>
-            <input type="password" name="password" autocomplete="new-password" minlength="8" />
+            <span>${
+              selected?.password_set ? "Replace password" : "Set portal password"
+            }</span>
+            <input type="password" id="customer-password" name="password" autocomplete="new-password" minlength="8"${
+              selected && !selected.password_set ? " required" : ""
+            } />
           </label>
           <p class="hint">${
             selected?.password_set
               ? "Leave blank to keep the current password."
-              : "Leave blank to create the customer with a pending password. The portal cannot sign in until a password is set."
+              : selected
+                ? "A portal password of at least 8 characters is required before this portal can become available."
+                : "Leave blank to create the customer with a pending password. The portal cannot sign in until a password is set."
           }</p>
           <label>
             <span>Status</span>
@@ -1755,18 +1761,39 @@ document.addEventListener("submit", async (event) => {
   const data = Object.fromEntries(new FormData(form));
   try {
     if (form.id === "customer-form") {
+      const passwordInput = form.querySelector("#customer-password");
+      const password =
+        passwordInput instanceof HTMLInputElement ? String(passwordInput.value || "") : "";
       const payload = {
         name: data.name,
         slug: data.slug,
         status: data.status,
       };
-      if (data.password) payload.password = data.password;
+      if (password) payload.password = password;
       if (data.id) {
-        await api(`/api/admin/customers/${data.id}`, { method: "PATCH", body: payload });
-        setStatus("Customer saved.");
+        const existing = state.customers.find((item) => item.id === data.id);
+        if (existing && !existing.password_set && !password) {
+          throw new Error("Set a portal password before saving.");
+        }
+        if (password && password.length < 8) {
+          throw new Error("Customer password must be at least 8 characters.");
+        }
+        const saved = await api(`/api/admin/customers/${data.id}`, {
+          method: "PATCH",
+          body: payload,
+        });
+        if (password && saved.customer?.password_set !== true) {
+          throw new Error("Portal password was not saved. Try again.");
+        }
+        setStatus(
+          password ? "Portal password set." : "Customer saved."
+        );
       } else {
         const created = await api("/api/admin/customers", { method: "POST", body: payload });
         state.selectedCustomerId = created.customer.id;
+        if (password && created.customer?.password_set !== true) {
+          throw new Error("Portal password was not saved. Try again.");
+        }
         setStatus(
           created.customer.password_set
             ? "Customer created."

@@ -328,11 +328,15 @@ const customers = async (db, method, parts, request, url) => {
         if (checked.error) return json({ error: checked.error }, 400);
         status = checked.value;
       }
-      if (body.password !== undefined && body.password !== "") {
-        if (String(body.password).length < 8) {
+      const submittedPassword =
+        typeof body.password === "string" ? body.password : "";
+      if (submittedPassword) {
+        if (submittedPassword.length < 8) {
           return json({ error: "Customer password must be at least 8 characters." }, 400);
         }
-        passwordHash = await hashPassword(String(body.password));
+        passwordHash = await hashPassword(submittedPassword);
+      } else if (!existing.password_hash) {
+        return json({ error: "Set a portal password before saving." }, 400);
       }
 
       try {
