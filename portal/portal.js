@@ -51,7 +51,7 @@
           ? `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`
           : `<span>${escapeHtml(item.label)}</span>`
       )
-      .join('<span aria-hidden="true">/</span>')}</nav>`;
+      .join('<span class="portal-crumb-sep" aria-hidden="true">/</span>')}</nav>`;
 
   const renderProjects = (payload) => {
     const projects = payload.projects || [];
@@ -61,13 +61,16 @@
     }
     if (!projects.length) {
       root.innerHTML = `
-        ${crumb([{ label: customerName }])}
-        <h1 class="portal-heading">${escapeHtml(customerName)}</h1>
-        ${empty("No project records are available yet.")}
+        <section class="portal-page">
+          ${crumb([{ label: customerName }])}
+          <h1 class="portal-heading">${escapeHtml(customerName)}</h1>
+          ${empty("No project records are available yet.")}
+        </section>
       `;
       return;
     }
     root.innerHTML = `
+      <section class="portal-page">
       ${crumb([{ label: customerName }])}
       <h1 class="portal-heading">${escapeHtml(customerName)}</h1>
       <p class="portal-sub">Select a project</p>
@@ -81,6 +84,7 @@
           )
           .join("")}
       </div>
+      </section>
     `;
   };
 
@@ -90,16 +94,19 @@
     const heading = project.name || customerName;
     if (!shoots.length) {
       root.innerHTML = `
+        <section class="portal-page">
         ${crumb([
           { href: `/${slug}`, label: customerName },
           { label: heading },
         ])}
         <h1 class="portal-heading">${escapeHtml(heading)}</h1>
         ${empty("No project records are available yet.")}
+        </section>
       `;
       return;
     }
     root.innerHTML = `
+      <section class="portal-page">
       ${crumb([
         { href: `/${slug}`, label: customerName },
         { label: heading },
@@ -125,6 +132,7 @@
           })
           .join("")}
       </div>
+      </section>
     `;
   };
 
@@ -147,6 +155,7 @@
     const images = payload.images || [];
     const heading = shoot.display_date || "Project record";
     root.innerHTML = `
+      <section class="portal-page portal-page-gallery">
       ${crumb([
         { href: `/${slug}`, label: customerName },
         { href: `/${slug}/${project.code}`, label: project.name || "Project" },
@@ -168,6 +177,7 @@
             </div>`
           : empty("This record is being prepared.")
       }
+      </section>
     `;
     root.querySelectorAll("[data-index]").forEach((button) => {
       button.addEventListener("click", () => {
