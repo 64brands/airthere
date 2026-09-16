@@ -61,6 +61,8 @@ body.portal-body .skip-link:focus {
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 600;
+  white-space: nowrap;
+  flex: 0 0 auto;
   cursor: pointer;
   border-radius: var(--portal-radius-small);
 }
@@ -390,7 +392,7 @@ body.lightbox-open {
 .lightbox-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(12, 18, 28, 0.9);
+  background: rgba(12, 18, 28, 0.96);
 }
 
 .lightbox-close,
@@ -494,7 +496,8 @@ body.lightbox-open {
   display: none;
 }
 
-.portal-body.lightbox-open .portal-header {
+.portal-body.lightbox-open .portal-header,
+.portal-body.lightbox-open .portal-main {
   visibility: hidden;
   pointer-events: none;
 }
