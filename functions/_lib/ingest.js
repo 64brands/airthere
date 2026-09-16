@@ -6,7 +6,7 @@ export const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
 export const MAX_ORIGINALS = 200;
 
 const COMPLETE_STATUSES = new Set(["uploaded", "verified", "published"]);
-const LOCKED_STATUSES = new Set(["verified", "published"]);
+const LOCKED_STATUSES = new Set(["published"]);
 
 export const isJpegFilename = (name) => {
   const lower = String(name || "").toLowerCase();
@@ -77,6 +77,7 @@ export const publicImage = (row, extra = {}) => ({
   content_type: row.content_type,
   byte_size: Number(row.byte_size || 0),
   created_at: row.created_at,
+  verified_at: row.verified_at || null,
   ...extra,
 });
 
@@ -136,17 +137,73 @@ const insertImageStatement = (db, image) =>
       image.created_at
     );
 
-const storedFlags = async (bucket, images) => {
-  const flags = await Promise.all(
-    images.map(async (image) => {
-      const head = await bucket.head(image.original_key);
-      return {
-        stored: Boolean(head) && Number(head.size) === Number(image.byte_size),
-        stored_bytes: head ? Number(head.size) : 0,
-      };
-    })
-  );
+const inspectHead = async (bucket, image) => {
+  const head = await bucket.head(image.original_key);
+  const stored = Boolean(head) && Number(head.size) === Number(image.byte_size);
+  return {
+    stored,
+    stored_bytes: head ? Number(head.size) : 0,
+    missing: !head,
+    size_mismatch: Boolean(head) && Number(head.size) !== Number(image.byte_size),
+  };
+};
+
+export const inspectOriginals = async (bucket, images) => {
+  if (!bucket) {
+    return images.map((image) =>
+      publicImage(image, { stored: false, stored_bytes: 0, missing: true, size_mismatch: false })
+    );
+  }
+  const flags = await Promise.all(images.map((image) => inspectHead(bucket, image)));
   return images.map((image, index) => publicImage(image, flags[index]));
+};
+
+const storedFlags = async (bucket, images) => inspectOriginals(bucket, images);
+
+const verifiedRowCount = (images) =>
+  (images || []).filter((image) => Boolean(image.verified_at)).length;
+
+const persistShootArchiveState = async (
+  db,
+  shoot,
+  images,
+  { status, verifiedCount, verifiedAt }
+) => {
+  const highWater = shootHighWater(shoot, images);
+  await db
+    .prepare(
+      `UPDATE shoots
+       SET status = ?, expected_count = ?, verified_count = ?, verified_at = ?, max_seq = ?
+       WHERE id = ?`
+    )
+    .bind(
+      status,
+      images.length,
+      verifiedCount,
+      verifiedAt,
+      highWater,
+      shoot.id
+    )
+    .run();
+  return highWater;
+};
+
+const missingPayload = (image, reason) => ({
+  seq: Number(image.seq),
+  original_filename: image.original_filename,
+  generated_filename: image.generated_filename,
+  reason,
+});
+
+const verificationFailureMessage = (verifiedCount, expected, missing) => {
+  if (expected === 0) return "This shoot has no originals to verify.";
+  if (missing.length === 1 && missing[0].reason === "missing") {
+    return "1 original is missing";
+  }
+  if (verifiedCount > 0) {
+    return `Archive incomplete — ${verifiedCount} of ${expected} originals verified`;
+  }
+  return `Archive incomplete — ${missing.length} original${missing.length === 1 ? "" : "s"} not in the archive`;
 };
 
 export const startOriginalIngest = async ({ db, bucket, project, customer, shootDate, files }) => {
@@ -267,14 +324,14 @@ export const storeOriginalObject = async ({ db, bucket, shootId, imageId, bytes 
 
   const head = await bucket.head(image.original_key);
   if (head && Number(head.size) === bytes.length) {
-    if (shoot.status !== "uploading") {
-      await db.prepare(`UPDATE shoots SET status = 'uploading' WHERE id = ?`).bind(shoot.id).run();
-    }
     return json({
       image: publicImage(image, { stored: true, stored_bytes: Number(head.size), skipped: true }),
     });
   }
   if (head) {
+    if (image.verified_at) {
+      return json({ error: "A verified original cannot be replaced." }, 409);
+    }
     return json(
       { error: "An original already exists at this archive path with a different size." },
       409
@@ -285,7 +342,19 @@ export const storeOriginalObject = async ({ db, bucket, shootId, imageId, bytes 
     httpMetadata: { contentType: JPEG_CONTENT_TYPE },
   });
 
-  if (shoot.status !== "uploading") {
+  if (image.verified_at) {
+    await db.prepare(`UPDATE images SET verified_at = NULL WHERE id = ?`).bind(image.id).run();
+    image.verified_at = null;
+  }
+
+  if (shoot.status === "verified" || shoot.verified_at) {
+    await db
+      .prepare(
+        `UPDATE shoots SET status = 'uploading', verified_at = NULL WHERE id = ?`
+      )
+      .bind(shoot.id)
+      .run();
+  } else if (shoot.status !== "uploading") {
     await db.prepare(`UPDATE shoots SET status = 'uploading' WHERE id = ?`).bind(shoot.id).run();
   }
 
@@ -317,53 +386,50 @@ export const completeOriginalIngest = async ({ db, bucket, shootId }) => {
   for (const image of images) {
     const head = await bucket.head(image.original_key);
     if (!head) {
-      missing.push({
-        original_filename: image.original_filename,
-        generated_filename: image.generated_filename,
-        reason: "not in archive",
-      });
+      missing.push(missingPayload(image, "missing"));
       continue;
     }
     if (Number(head.size) !== Number(image.byte_size)) {
-      missing.push({
-        original_filename: image.original_filename,
-        generated_filename: image.generated_filename,
-        reason: "byte size mismatch",
-      });
+      missing.push(missingPayload(image, "size mismatch"));
     }
   }
 
   if (missing.length) {
-    if (shoot.status !== "uploading") {
-      await db.prepare(`UPDATE shoots SET status = 'uploading' WHERE id = ?`).bind(shoot.id).run();
-    }
     const stored = images.length - missing.length;
+    const verifiedCount = verifiedRowCount(images);
+    await persistShootArchiveState(db, shoot, images, {
+      status: "uploading",
+      verifiedCount,
+      verifiedAt: null,
+    });
     return json(
       {
         error: `Upload incomplete. ${stored} of ${images.length} originals stored.`,
         incomplete: true,
         expected_count: images.length,
         stored_count: stored,
+        verified_count: verifiedCount,
         missing,
       },
       409
     );
   }
 
-  const highWater = shootHighWater(shoot, images);
-  await db
-    .prepare(
-      `UPDATE shoots SET status = 'uploaded', expected_count = ?, max_seq = ? WHERE id = ?`
-    )
-    .bind(images.length, highWater, shoot.id)
-    .run();
+  const verifiedCount = verifiedRowCount(images);
+  const fullyVerified = images.length > 0 && verifiedCount === images.length;
+  const highWater = await persistShootArchiveState(db, shoot, images, {
+    status: fullyVerified ? "verified" : "uploaded",
+    verifiedCount,
+    verifiedAt: fullyVerified ? shoot.verified_at || nowIso() : null,
+  });
 
   return json({
     complete: true,
-    status: "uploaded",
+    status: fullyVerified ? "verified" : "uploaded",
     expected_count: images.length,
     stored_count: images.length,
     image_count: images.length,
+    verified_count: verifiedCount,
     max_seq: highWater,
     message: `${images.length} original${images.length === 1 ? "" : "s"} in this shoot`,
   });
@@ -420,9 +486,11 @@ export const appendOriginals = async ({ db, bucket, shootId, files }) => {
   await db.batch([
     db
       .prepare(
-        `UPDATE shoots SET status = 'uploading', expected_count = ?, max_seq = ? WHERE id = ?`
+        `UPDATE shoots
+         SET status = 'uploading', expected_count = ?, max_seq = ?, verified_count = ?, verified_at = NULL
+         WHERE id = ?`
       )
-      .bind(nextCount, nextHighWater, shoot.id),
+      .bind(nextCount, nextHighWater, verifiedRowCount(existing), shoot.id),
     ...imageRows.map((image) => insertImageStatement(db, image)),
   ]);
 
@@ -471,9 +539,27 @@ export const removeOriginalImage = async ({ db, bucket, shootId, imageId }) => {
   await db.batch(statements);
 
   const remaining = await loadShootImages(db, shoot.id);
+  const verifiedCount = verifiedRowCount(remaining);
+  let status = shoot.status === "published" ? "uploaded" : shoot.status;
+  let verifiedAt = shoot.verified_at || null;
+  if (!remaining.length) {
+    status = "draft";
+    verifiedAt = null;
+  } else if (verifiedCount === remaining.length) {
+    status = "verified";
+    verifiedAt = shoot.verified_at || nowIso();
+  } else {
+    verifiedAt = null;
+    if (shoot.status === "verified") status = "uploaded";
+  }
+
   await db
-    .prepare(`UPDATE shoots SET expected_count = ?, max_seq = ? WHERE id = ?`)
-    .bind(remaining.length, highWater, shoot.id)
+    .prepare(
+      `UPDATE shoots
+       SET status = ?, expected_count = ?, verified_count = ?, verified_at = ?, max_seq = ?
+       WHERE id = ?`
+    )
+    .bind(status, remaining.length, verifiedCount, verifiedAt, highWater, shoot.id)
     .run();
   return json({
     removed: true,
@@ -482,7 +568,108 @@ export const removeOriginalImage = async ({ db, bucket, shootId, imageId }) => {
     seq: image.seq,
     expected_count: remaining.length,
     image_count: remaining.length,
+    verified_count: verifiedCount,
+    status,
     max_seq: highWater,
+  });
+};
+
+export const verifyOriginalArchive = async ({ db, bucket, shootId }) => {
+  if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+
+  const shoot = await db.prepare(`SELECT * FROM shoots WHERE id = ?`).bind(shootId).first();
+  if (!shoot) return json({ error: "Shoot not found." }, 404);
+
+  const images = await loadShootImages(db, shootId);
+  if (!images.length) {
+    await persistShootArchiveState(db, shoot, images, {
+      status: shoot.status === "published" ? "published" : "draft",
+      verifiedCount: 0,
+      verifiedAt: null,
+    });
+    return json({ error: "This shoot has no originals to verify." }, 409);
+  }
+
+  const inspected = await inspectOriginals(bucket, images);
+  const now = nowIso();
+  const passed = inspected.filter((image) => image.stored);
+  const failed = inspected.filter((image) => !image.stored);
+  const statements = [];
+  if (failed.length) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE images SET verified_at = NULL WHERE shoot_id = ? AND id IN (${failed
+            .map(() => "?")
+            .join(",")})`
+        )
+        .bind(shoot.id, ...failed.map((image) => image.id))
+    );
+  }
+  if (passed.length) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE images SET verified_at = COALESCE(verified_at, ?) WHERE shoot_id = ? AND id IN (${passed
+            .map(() => "?")
+            .join(",")})`
+        )
+        .bind(now, shoot.id, ...passed.map((image) => image.id))
+    );
+  }
+
+  const verifiedCount = passed.length;
+  const missing = failed.map((image) =>
+    missingPayload(image, image.missing ? "missing" : "size mismatch")
+  );
+  const fullyVerified = verifiedCount === inspected.length;
+
+  statements.push(
+    db
+      .prepare(
+        `UPDATE shoots
+         SET status = ?, expected_count = ?, verified_count = ?, verified_at = ?, max_seq = ?
+         WHERE id = ?`
+      )
+      .bind(
+        fullyVerified
+          ? "verified"
+          : missing.some((item) => item.reason === "missing")
+            ? "uploading"
+            : "uploaded",
+        inspected.length,
+        verifiedCount,
+        fullyVerified ? shoot.verified_at || now : null,
+        shootHighWater(shoot, images),
+        shoot.id
+      )
+  );
+
+  await db.batch(statements);
+
+  if (!fullyVerified) {
+    return json(
+      {
+        error: verificationFailureMessage(verifiedCount, inspected.length, missing),
+        verified: false,
+        expected_count: inspected.length,
+        verified_count: verifiedCount,
+        stored_count: verifiedCount,
+        missing,
+      },
+      409
+    );
+  }
+
+  return json({
+    verified: true,
+    status: "verified",
+    expected_count: inspected.length,
+    verified_count: verifiedCount,
+    stored_count: inspected.length,
+    verified_at: shoot.verified_at || now,
+    image_count: inspected.length,
+    message: `${verifiedCount} of ${inspected.length} originals verified`,
   });
 };
 

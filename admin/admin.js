@@ -39,6 +39,8 @@ const shootView = {
   images: [],
   addFiles: [],
   addRejected: [],
+  recoverFiles: [],
+  recoverRejected: [],
   busy: false,
   actionError: "",
 };
@@ -183,6 +185,25 @@ const uploadShoot = async () => {
       method: "POST",
       body: {},
     });
+    let verified;
+    try {
+      verified = await api(`/api/admin/shoots/${started.shoot_id}/verify`, {
+        method: "POST",
+        body: {},
+      });
+    } catch (error) {
+      ingest.files = [];
+      ingest.rejected = [];
+      ingest.shootDate = "";
+      ingest.dateDraft = "";
+      ingest.dateError = "";
+      ingest.calendarOpen = false;
+      await loadAll();
+      ingest.busy = false;
+      location.hash = `shoots/view/${started.shoot_id}`;
+      setStatus(error.message, true);
+      return;
+    }
     ingest.files = [];
     ingest.rejected = [];
     ingest.shootDate = "";
@@ -191,8 +212,8 @@ const uploadShoot = async () => {
     ingest.calendarOpen = false;
     await loadAll();
     ingest.busy = false;
-    render();
-    setStatus(completed.message || `${completed.image_count || total} originals in this shoot`);
+    location.hash = `shoots/view/${started.shoot_id}`;
+    setStatus(verified.message || completed.message || `${completed.image_count || total} originals in this shoot`);
   } catch (error) {
     ingest.busy = false;
     try {
@@ -365,6 +386,43 @@ const addJpegFiles = (fileList) =>
 const addShootViewFiles = (fileList) =>
   addJpegFilesTo({ files: shootView.addFiles, rejected: shootView.addRejected }, fileList);
 
+const missingShootImages = () => shootView.images.filter((image) => !image.stored);
+
+const recoverNameMap = () => {
+  const map = new Map();
+  missingShootImages().forEach((image) => {
+    if (image.original_filename) map.set(String(image.original_filename).toLowerCase(), image);
+    if (image.generated_filename) map.set(String(image.generated_filename).toLowerCase(), image);
+  });
+  return map;
+};
+
+const addRecoverFiles = (fileList) => {
+  const missing = recoverNameMap();
+  Array.from(fileList || []).forEach((file) => {
+    if (!isJpegFile(file)) {
+      shootView.recoverRejected.push({ name: file.name, reason: "JPEG required" });
+      return;
+    }
+    const key = file.name.toLowerCase();
+    if (!missing.has(key)) {
+      shootView.recoverRejected.push({
+        name: file.name,
+        reason: "not one of the missing originals",
+      });
+      return;
+    }
+    if (shootView.recoverFiles.some((item) => item.name.toLowerCase() === key)) {
+      shootView.recoverRejected.push({ name: file.name, reason: "already selected" });
+      return;
+    }
+    shootView.recoverFiles.push(file);
+  });
+  if (shootView.recoverRejected.length > 8) {
+    shootView.recoverRejected.splice(0, shootView.recoverRejected.length - 8);
+  }
+};
+
 const originalsCountLabel = (count) =>
   `${count} original${count === 1 ? "" : "s"} in this shoot`;
 
@@ -382,6 +440,8 @@ const resetShootView = () => {
   shootView.images = [];
   shootView.addFiles = [];
   shootView.addRejected = [];
+  shootView.recoverFiles = [];
+  shootView.recoverRejected = [];
   shootView.busy = false;
   shootView.actionError = "";
 };
@@ -444,21 +504,42 @@ const addToShoot = async () => {
       method: "POST",
       body: {},
     });
+    let verified;
+    try {
+      verified = await api(`/api/admin/shoots/${shoot.id}/verify`, {
+        method: "POST",
+        body: {},
+      });
+    } catch (error) {
+      shootView.addFiles = [];
+      shootView.addRejected = [];
+      shootView.busy = false;
+      await loadAll();
+      await loadShootView(shoot.id);
+      setStatus(error.message, true);
+      return;
+    }
     shootView.addFiles = [];
     shootView.addRejected = [];
     shootView.busy = false;
     await loadAll();
     await loadShootView(shoot.id);
-    setStatus(completed.message || originalsCountLabel(shootView.images.length));
+    setStatus(verified.message || completed.message || originalsCountLabel(shootView.images.length));
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
+    const leftover = shootView.addFiles.slice();
     try {
       await loadAll();
+      await loadShootView(shoot.id);
+      if (missingShootImages().length && leftover.length) {
+        shootView.addFiles = [];
+        addRecoverFiles(leftover);
+        render();
+      }
     } catch {
-      /* keep the selected files visible */
+      render();
     }
-    render();
     setStatus(error.message, true);
   }
 };
@@ -481,6 +562,104 @@ const removeShootImage = async (imageId) => {
     shootView.busy = false;
     shootView.actionError = error.message;
     render();
+    setStatus(error.message, true);
+  }
+};
+
+const continueShootUpload = async () => {
+  const shoot = shootView.shoot;
+  const missing = missingShootImages();
+  if (!shoot || shootView.busy || !missing.length || !shootView.recoverFiles.length) return;
+
+  shootView.busy = true;
+  shootView.actionError = "";
+  const uploadButton = document.querySelector("#shoot-recover-upload");
+  if (uploadButton) uploadButton.disabled = true;
+
+  const fileMap = new Map(shootView.recoverFiles.map((file) => [file.name.toLowerCase(), file]));
+  const failures = [];
+  let storedCount = 0;
+
+  try {
+    for (let index = 0; index < missing.length; index += 1) {
+      const image = missing[index];
+      const file =
+        fileMap.get(String(image.original_filename || "").toLowerCase()) ||
+        fileMap.get(String(image.generated_filename || "").toLowerCase());
+      if (!file) {
+        failures.push(`${image.generated_filename}: supply this original to continue.`);
+        continue;
+      }
+      setStatus(`Uploading missing original ${index + 1} of ${missing.length}`);
+      try {
+        await uploadOriginalBytes(`/api/admin/shoots/${shoot.id}/originals/${image.id}`, file);
+        storedCount += 1;
+      } catch (error) {
+        failures.push(`${file.name}: ${error.message}`);
+      }
+    }
+
+    if (failures.length) {
+      throw new Error(
+        `Upload incomplete. ${storedCount} of ${missing.length} missing originals stored. ${failures.join(" ")}`
+      );
+    }
+
+    await api(`/api/admin/shoots/${shoot.id}/complete`, { method: "POST", body: {} });
+    let verified;
+    try {
+      verified = await api(`/api/admin/shoots/${shoot.id}/verify`, { method: "POST", body: {} });
+    } catch (error) {
+      shootView.recoverFiles = [];
+      shootView.recoverRejected = [];
+      shootView.busy = false;
+      await loadAll();
+      await loadShootView(shoot.id);
+      setStatus(error.message, true);
+      return;
+    }
+    shootView.recoverFiles = [];
+    shootView.recoverRejected = [];
+    shootView.busy = false;
+    await loadAll();
+    await loadShootView(shoot.id);
+    setStatus(verified.message || originalsCountLabel(shootView.images.length));
+  } catch (error) {
+    shootView.busy = false;
+    shootView.actionError = error.message;
+    try {
+      await loadAll();
+    } catch {
+      /* keep the selected files visible */
+    }
+    render();
+    setStatus(error.message, true);
+  }
+};
+
+const verifyShootArchive = async () => {
+  const shoot = shootView.shoot;
+  if (!shoot || shootView.busy) return;
+  shootView.busy = true;
+  shootView.actionError = "";
+  try {
+    setStatus("Verifying original archive…");
+    const verified = await api(`/api/admin/shoots/${shoot.id}/verify`, {
+      method: "POST",
+      body: {},
+    });
+    shootView.busy = false;
+    await loadAll();
+    await loadShootView(shoot.id);
+    setStatus(verified.message || originalsCountLabel(shootView.images.length));
+  } catch (error) {
+    shootView.busy = false;
+    shootView.actionError = error.message;
+    try {
+      await loadShootView(shoot.id);
+    } catch {
+      render();
+    }
     setStatus(error.message, true);
   }
 };
@@ -517,13 +696,29 @@ const customerOptions = (selected) =>
 
 const shootHistoryMeta = (shoot) => {
   const count = liveShootCount(shoot);
+  const expected = Number(shoot.expected_count || count || 0);
+  const stored = Number(shoot.stored_count ?? count);
+  const verified = Number(shoot.verified_count || 0);
+  const originalWord = count === 1 ? "original" : "originals";
   if (shoot.status === "draft" && count === 0) return "No images";
   if (shoot.status === "uploading") {
-    return count ? `Incomplete · ${count}` : "Uploading";
+    if (expected > 0) return `${stored} of ${expected} originals uploaded · Incomplete`;
+    return stored ? `Incomplete · ${stored}` : "Uploading";
   }
-  if (shoot.status === "verified") return `Verified · ${count}`;
-  if (shoot.status === "published") return `Published · ${count}`;
-  return `${count} original${count === 1 ? "" : "s"}`;
+  if (shoot.status === "verified") return `${count} ${originalWord} · Verified`;
+  if (shoot.status === "published") return `${count} ${originalWord} · Published`;
+  if (shoot.status === "uploaded") {
+    if (verified > 0 && verified < expected) {
+      return `Archive incomplete · ${verified} of ${expected} verified`;
+    }
+    return `${count} ${originalWord} · Verification pending`;
+  }
+  return `${count} ${originalWord}`;
+};
+
+const shootHistoryAction = (shoot) => {
+  if (shoot.status === "uploading") return "Continue Upload";
+  return "View";
 };
 
 const renderCustomers = () => {
@@ -721,7 +916,7 @@ const renderShoots = () => {
                 <button type="button" class="shoot-row" data-view-shoot="${escapeHtml(shoot.id)}">
                   <strong class="shoot-row-date">${escapeHtml(shoot.shoot_date_display)}</strong>
                   <span class="shoot-row-count">${escapeHtml(shootHistoryMeta(shoot))}</span>
-                  <span class="shoot-row-action">View</span>
+                  <span class="shoot-row-action">${escapeHtml(shootHistoryAction(shoot))}</span>
                 </button>
               </li>`
                 )
@@ -786,7 +981,9 @@ const renderShoots = () => {
             blockingShoot
               ? `<p class="form-error" role="status">A Shoot already exists for this project on this date.</p>`
               : incompleteShoot
-                ? `<p class="form-error" role="status">This shoot is incomplete. Re-select the same JPEGs to continue uploading originals.</p>`
+                ? `<p class="form-error" role="status">This shoot is incomplete. <a class="text-link" href="#shoots/view/${escapeHtml(
+                    existingShoot.id
+                  )}">Continue Upload</a> from the existing Shoot.</p>`
                 : ""
           }
           ${
@@ -820,7 +1017,7 @@ const renderShoots = () => {
               : ""
           }
           <button class="button" type="button" id="ingest-upload" ${ready ? "" : "disabled"}>Upload Shoot</button>
-          <p class="hint">Original JPEGs stay private. Standard images and archive verification come later.</p>
+          <p class="hint">Original JPEGs stay private in the archive. Verification confirms every expected original is stored at the recorded size.</p>
         </form>
       </section>
     </div>
@@ -844,7 +1041,22 @@ const loadShootView = async (shootId) => {
       shootView.loading = false;
       render();
       if (shootView.shoot && !shootView.actionError) {
-        setStatus(originalsCountLabel(shootView.images.length));
+        const shoot = shootView.shoot;
+        if (shoot.status === "verified") {
+          setStatus(
+            `${Number(shoot.verified_count || shootView.images.length)} of ${
+              Number(shoot.expected_count || shootView.images.length)
+            } originals verified`
+          );
+        } else {
+          const missing = missingShootImages().length;
+          const stored = shootView.images.length - missing;
+          if (missing) {
+            setStatus(`${stored} of ${shootView.images.length} originals uploaded · Incomplete`);
+          } else {
+            setStatus(originalsCountLabel(shootView.images.length));
+          }
+        }
       }
     }
   }
@@ -859,6 +1071,8 @@ const renderShootView = (shootId) => {
     shootView.images = [];
     shootView.addFiles = [];
     shootView.addRejected = [];
+    shootView.recoverFiles = [];
+    shootView.recoverRejected = [];
     shootView.busy = false;
     shootView.actionError = "";
     loadShootView(shootId);
@@ -882,7 +1096,11 @@ const renderShootView = (shootId) => {
   }
 
   const count = shootView.images.length;
+  const missing = missingShootImages();
+  const storedImages = shootView.images.filter((image) => image.stored);
+  const lightboxIndexById = new Map(storedImages.map((image, index) => [image.id, index]));
   const addCount = shootView.addFiles.length;
+  const recoverCount = shootView.recoverFiles.length;
   const nextSeq =
     Math.max(
       Number(shoot.max_seq || 0),
@@ -894,7 +1112,37 @@ const renderShootView = (shootId) => {
     generatedFilename(shoot.project_code, shoot.shoot_date, nextSeq + index)
   );
   const addReady = Boolean(addCount && !shootView.busy);
+  const recoverReady = Boolean(recoverCount && missing.length && !shootView.busy);
   const canRemove = isSuperAdmin();
+  const showRecover = missing.length > 0;
+  const showVerify =
+    !showRecover && count > 0 && shoot.status !== "verified" && shoot.status !== "published";
+  const showAdd = !showRecover && shoot.status !== "published";
+  const verifiedCount = Number(shoot.verified_count || 0);
+  const archiveBanner =
+    shoot.status === "verified"
+      ? `<div class="archive-banner archive-banner-ok">
+          <p class="archive-kicker">Original archive verified ✓</p>
+          <p class="archive-count">${verifiedCount} of ${Number(
+            shoot.expected_count || count
+          )} originals verified</p>
+          ${
+            shoot.verified_at_display
+              ? `<p class="archive-date">${escapeHtml(shoot.verified_at_display)}</p>`
+              : ""
+          }
+        </div>`
+      : showRecover
+        ? `<div class="archive-banner archive-banner-warn">
+          <p class="archive-kicker">Archive incomplete</p>
+          <p class="archive-count">${count - missing.length} of ${count} originals uploaded</p>
+        </div>`
+        : shoot.status === "uploaded" && verifiedCount > 0 && verifiedCount < count
+          ? `<div class="archive-banner archive-banner-warn">
+          <p class="archive-kicker">Archive incomplete</p>
+          <p class="archive-count">${verifiedCount} of ${count} originals verified</p>
+        </div>`
+          : "";
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
@@ -907,16 +1155,19 @@ const renderShootView = (shootId) => {
         )}</span></dd></div>
         <div><dt>Images</dt><dd>${count} original${count === 1 ? "" : "s"}</dd></div>
       </dl>
+      ${archiveBanner}
       ${
         count
           ? `<div class="shoot-view-grid">${shootView.images
               .map(
-                (image, index) => `
-            <figure class="shoot-view-card">
-              <button
+                (image) => `
+            <figure class="shoot-view-card${image.stored ? "" : " is-missing"}">
+              ${
+                image.stored
+                  ? `<button
                 type="button"
                 class="shoot-view-open"
-                data-lightbox-index="${index}"
+                data-lightbox-index="${lightboxIndexById.get(image.id)}"
                 aria-label="View ${escapeHtml(image.generated_filename)}"
               >
                 <img
@@ -925,7 +1176,9 @@ const renderShootView = (shootId) => {
                   loading="lazy"
                   decoding="async"
                 />
-              </button>
+              </button>`
+                  : `<div class="shoot-missing-thumb">Missing</div>`
+              }
               <figcaption>
                 <span class="shoot-seq">${String(image.seq).padStart(3, "0")}</span>
                 <span class="shoot-filename">${escapeHtml(image.generated_filename)}</span>
@@ -942,17 +1195,72 @@ const renderShootView = (shootId) => {
               .join("")}</div>`
           : `<p class="empty">No originals stored for this shoot yet.</p>`
       }
-      <div class="shoot-add">
+      ${
+        showRecover
+          ? `<div class="shoot-recover">
+        <p class="shoot-add-label">Continue Upload</p>
+        <p class="hint">Supply the missing source files. They keep their already-assigned archive names.</p>
+        <ul class="recover-missing">${missing
+          .map(
+            (image) =>
+              `<li><span class="shoot-seq">${String(image.seq).padStart(3, "0")}</span> ${escapeHtml(
+                image.generated_filename
+              )} <span class="recover-source">${escapeHtml(image.original_filename || "")}</span></li>`
+          )
+          .join("")}</ul>
+        ${
+          recoverCount
+            ? `<div class="ingest-summary">
+          <p><strong>${recoverCount} JPEG image${recoverCount === 1 ? "" : "s"}</strong> selected for recovery</p>
+          <button class="text-clear" type="button" id="shoot-recover-clear" ${
+            shootView.busy ? "disabled" : ""
+          }>Clear selection</button>
+        </div>`
+            : ""
+        }
+        <div class="ingest-drop${recoverCount ? " is-compact" : ""}" id="shoot-recover-drop" tabindex="0">
+          <input class="ingest-file-input" id="shoot-recover-files" type="file" accept=".jpg,.jpeg,image/jpeg" multiple ${
+            shootView.busy ? "disabled" : ""
+          } />
+          <p class="ingest-drop-title">${recoverCount ? "Add missing JPEG images" : "Drop missing JPEG images here"}</p>
+          <p class="ingest-drop-copy">Match the original filenames listed above</p>
+        </div>
+        ${
+          shootView.recoverRejected.length
+            ? `<ul class="ingest-rejected">${shootView.recoverRejected
+                .map(
+                  (item) =>
+                    `<li>Not added: ${escapeHtml(item.name)} (${escapeHtml(item.reason)})</li>`
+                )
+                .join("")}</ul>`
+            : ""
+        }
+        <button class="button" type="button" id="shoot-recover-upload" ${
+          recoverReady ? "" : "disabled"
+        }>Continue Upload</button>
+      </div>`
+          : ""
+      }
+      ${
+        showVerify
+          ? `<div class="shoot-verify">
+        <button class="button" type="button" id="shoot-verify" ${shootView.busy ? "disabled" : ""}>Verify original archive</button>
+      </div>`
+          : ""
+      }
+      ${
+        showAdd
+          ? `<div class="shoot-add">
         <p class="shoot-add-label">Add JPEG images</p>
         ${
           addCount
             ? `<div class="ingest-summary">
           <p><strong>${addCount} JPEG image${addCount === 1 ? "" : "s"}</strong> selected</p>
           <p class="ingest-filenames">${previewNames.map((name) => escapeHtml(name)).join("<br />")}${
-            addCount > previewCount
-              ? `<br /><span>and ${addCount - previewCount} more</span>`
-              : ""
-          }</p>
+              addCount > previewCount
+                ? `<br /><span>and ${addCount - previewCount} more</span>`
+                : ""
+            }</p>
           <button class="text-clear" type="button" id="shoot-add-clear" ${
             shootView.busy ? "disabled" : ""
           }>Clear selection</button>
@@ -977,7 +1285,9 @@ const renderShootView = (shootId) => {
             : ""
         }
         <button class="button" type="button" id="shoot-add-upload" ${addReady ? "" : "disabled"}>Add to Shoot</button>
-      </div>
+      </div>`
+          : ""
+      }
     </section>
   `;
 };
@@ -1141,6 +1451,14 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (event.target.id === "shoot-recover-clear") {
+    if (shootView.busy) return;
+    shootView.recoverFiles = [];
+    shootView.recoverRejected = [];
+    render();
+    return;
+  }
+
   const removeImage = event.target.closest("[data-remove-image]");
   if (removeImage) {
     event.preventDefault();
@@ -1153,11 +1471,13 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     const index = Number(lightboxOpen.getAttribute("data-lightbox-index"));
     window.AirThereLightbox?.open(
-      shootView.images.map((image) => ({
-        src: `/api/admin/shoots/${shootView.shoot.id}/originals/${image.id}`,
-        seq: image.seq,
-        filename: image.generated_filename,
-      })),
+      shootView.images
+        .filter((image) => image.stored)
+        .map((image) => ({
+          src: `/api/admin/shoots/${shootView.shoot.id}/originals/${image.id}`,
+          seq: image.seq,
+          filename: image.generated_filename,
+        })),
       index
     );
     return;
@@ -1172,6 +1492,18 @@ document.addEventListener("click", (event) => {
   if (event.target.id === "shoot-add-upload") {
     event.preventDefault();
     addToShoot();
+    return;
+  }
+
+  if (event.target.id === "shoot-recover-upload") {
+    event.preventDefault();
+    continueShootUpload();
+    return;
+  }
+
+  if (event.target.id === "shoot-verify") {
+    event.preventDefault();
+    verifyShootArchive();
   }
 });
 
@@ -1230,6 +1562,13 @@ document.addEventListener("change", (event) => {
     render();
     return;
   }
+  if (event.target.id === "shoot-recover-files") {
+    if (shootView.busy) return;
+    addRecoverFiles(event.target.files);
+    event.target.value = "";
+    render();
+    return;
+  }
   if (event.target.matches("#project-form [name=name]")) {
     const code = document.querySelector("#project-form [name=code]");
     if (code && !code.dataset.touched) code.value = suggestCode(event.target.value);
@@ -1243,7 +1582,9 @@ document.addEventListener("input", (event) => {
 });
 
 const dropTarget = (event) =>
-  event.target.closest("#ingest-drop") || event.target.closest("#shoot-add-drop");
+  event.target.closest("#ingest-drop") ||
+  event.target.closest("#shoot-add-drop") ||
+  event.target.closest("#shoot-recover-drop");
 
 document.addEventListener("dragenter", (event) => {
   const drop = dropTarget(event);
@@ -1271,12 +1612,15 @@ document.addEventListener("drop", (event) => {
   const drop = dropTarget(event);
   if (!drop) return;
   const isAdd = drop.id === "shoot-add-drop";
-  if (isAdd ? shootView.busy : ingest.busy) return;
+  const isRecover = drop.id === "shoot-recover-drop";
+  if ((isAdd || isRecover) && shootView.busy) return;
+  if (!isAdd && !isRecover && ingest.busy) return;
   event.preventDefault();
   event.stopPropagation();
   drop.classList.remove("is-over");
   const files = collectDroppedFiles(event.dataTransfer);
-  if (isAdd) addShootViewFiles(files);
+  if (isRecover) addRecoverFiles(files);
+  else if (isAdd) addShootViewFiles(files);
   else addJpegFiles(files);
   render();
 });

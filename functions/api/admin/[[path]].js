@@ -4,11 +4,13 @@ import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_l
 import {
   appendOriginals,
   completeOriginalIngest,
-  publicImage,
+  inspectOriginals,
   removeOriginalImage,
   serveOriginalObject,
   startOriginalIngest,
   storeOriginalObject,
+  verifyOriginalArchive,
+  loadShootImages,
 } from "../../_lib/ingest.js";
 import {
   filenameDateFromShootDate,
@@ -19,6 +21,7 @@ import { hashPassword } from "../../_lib/passwords.js";
 import { bindingPresence, secretPresence } from "../../_lib/runtime.js";
 import {
   clean,
+  formatArchiveDate,
   formatDisplayDate,
   formatTimestamp,
   suggestProjectCode,
@@ -66,12 +69,28 @@ const publicShoot = (row) => ({
   expected_count: Number(row.expected_count || 0),
   image_count: Number(row.image_count || 0),
   max_seq: Number(row.max_seq || 0),
-  verified_count: row.verified_count,
+  verified_count: Number(row.verified_count || 0),
+  stored_count:
+    row.stored_count == null ? Number(row.image_count || 0) : Number(row.stored_count),
   cover_image_id: row.cover_image_id,
   created_at: row.created_at,
   created_at_display: formatTimestamp(row.created_at),
-  verified_at: row.verified_at,
+  verified_at: row.verified_at || null,
+  verified_at_display: formatArchiveDate(row.verified_at),
 });
+
+const decorateListedShoot = async (bucket, db, row) => {
+  if (row.status !== "uploading" || !bucket) {
+    return publicShoot({ ...row, stored_count: Number(row.image_count || 0) });
+  }
+  const images = await loadShootImages(db, row.id);
+  const inspected = await inspectOriginals(bucket, images);
+  return publicShoot({
+    ...row,
+    expected_count: images.length || row.expected_count,
+    stored_count: inspected.filter((image) => image.stored).length,
+  });
+};
 
 const uniqueError = (error, fallback) => {
   const message = String(error?.message || "");
@@ -462,7 +481,10 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
       sql += ` ORDER BY s.shoot_date DESC, s.created_at DESC`;
       const stmt = binds.length ? db.prepare(sql).bind(...binds) : db.prepare(sql);
       const rows = await stmt.all();
-      return json({ shoots: (rows.results || []).map(publicShoot) });
+      const shoots = await Promise.all(
+        (rows.results || []).map((row) => decorateListedShoot(env.IMAGES, db, row))
+      );
+      return json({ shoots });
     }
 
     if (method === "POST") {
@@ -521,19 +543,23 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
     if (method !== "GET") return methodNotAllowed("GET");
     const row = await db.prepare(`${shootSelect} WHERE s.id = ?`).bind(parts[1]).first();
     if (!row) return json({ error: "Shoot not found." }, 404);
-    const images = await db
-      .prepare(`SELECT * FROM images WHERE shoot_id = ? ORDER BY seq ASC`)
-      .bind(parts[1])
-      .all();
+    const images = await loadShootImages(db, parts[1]);
+    const inspected = await inspectOriginals(env.IMAGES, images);
+    const storedCount = inspected.filter((image) => image.stored).length;
     return json({
-      shoot: publicShoot(row),
-      images: (images.results || []).map((image) => publicImage(image)),
+      shoot: publicShoot({ ...row, stored_count: storedCount }),
+      images: inspected,
     });
   }
 
   if (parts.length === 3 && parts[2] === "complete") {
     if (method !== "POST") return methodNotAllowed("POST");
     return completeOriginalIngest({ db, bucket: env.IMAGES, shootId: parts[1] });
+  }
+
+  if (parts.length === 3 && parts[2] === "verify") {
+    if (method !== "POST") return methodNotAllowed("POST");
+    return verifyOriginalArchive({ db, bucket: env.IMAGES, shootId: parts[1] });
   }
 
   if (parts.length === 3 && parts[2] === "originals") {
