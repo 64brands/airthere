@@ -597,6 +597,64 @@ export const removeOriginalImage = async ({ db, bucket, shootId, imageId }) => {
   });
 };
 
+export const CONFIRM_DELETE_SHOOT = "DELETE";
+
+const archiveKeysForImage = (image) =>
+  [image?.original_key, image?.web_key].filter((key) => Boolean(key));
+
+export const deleteShoot = async ({ db, bucket, shootId, confirm }) => {
+  if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+  if (String(confirm || "").trim() !== CONFIRM_DELETE_SHOOT) {
+    return json({ error: "Type DELETE to confirm." }, 400);
+  }
+
+  const shoot = await db.prepare(`SELECT * FROM shoots WHERE id = ?`).bind(shootId).first();
+  if (!shoot) return json({ error: "Shoot not found." }, 404);
+
+  const images = await loadShootImages(db, shoot.id);
+  const failedObjects = [];
+
+  for (const image of images) {
+    for (const key of archiveKeysForImage(image)) {
+      try {
+        await bucket.delete(key);
+      } catch (error) {
+        failedObjects.push({
+          image_id: image.id,
+          key,
+          reason: error?.message || "Archive object could not be deleted.",
+        });
+      }
+    }
+  }
+
+  if (failedObjects.length) {
+    return json(
+      {
+        error: `Could not delete ${failedObjects.length} archive object${
+          failedObjects.length === 1 ? "" : "s"
+        }. The Shoot was left in place so deletion can be retried.`,
+        deleted: false,
+        failed_objects: failedObjects,
+        remaining_images: images.length,
+      },
+      500
+    );
+  }
+
+  const statements = [];
+  if (images.length) {
+    statements.push(db.prepare(`DELETE FROM images WHERE shoot_id = ?`).bind(shoot.id));
+  }
+  statements.push(db.prepare(`DELETE FROM shoots WHERE id = ?`).bind(shoot.id));
+  await db.batch(statements);
+
+  return json({
+    deleted: true,
+    shoot_id: shoot.id,
+  });
+};
+
 export const verifyOriginalArchive = async ({ db, bucket, shootId }) => {
   if (!bucket) return json({ error: "Image archive is not bound." }, 503);
 

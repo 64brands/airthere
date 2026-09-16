@@ -4,6 +4,7 @@ import { json, methodNotAllowed, newId, nowIso, readJson, splat } from "../../_l
 import {
   appendOriginals,
   completeOriginalIngest,
+  deleteShoot,
   inspectOriginals,
   removeOriginalImage,
   serveOriginalObject,
@@ -549,7 +550,20 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
   }
 
   if (parts.length === 2) {
-    if (method !== "GET") return methodNotAllowed("GET");
+    if (method === "DELETE") {
+      if (!hasCapability(actor, "delete_shoots")) {
+        const denied = denyCapability("delete_shoots");
+        return json({ error: denied.error }, denied.status);
+      }
+      const body = (await readJson(request)) || {};
+      return deleteShoot({
+        db,
+        bucket: env.IMAGES,
+        shootId: parts[1],
+        confirm: body.confirm,
+      });
+    }
+    if (method !== "GET") return methodNotAllowed("GET, DELETE");
     const row = await db.prepare(`${shootSelect} WHERE s.id = ?`).bind(parts[1]).first();
     if (!row) return json({ error: "Shoot not found." }, 404);
     const images = await loadShootImages(db, parts[1]);

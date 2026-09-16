@@ -956,6 +956,94 @@ body.lightbox-open {
   margin-top: 0.1rem;
 }
 
+.shoot-danger {
+  margin-top: 2.4rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.shoot-delete-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.shoot-delete-open:hover {
+  color: var(--orange);
+}
+
+.shoot-delete-open:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.shoot-delete-confirm {
+  max-width: 28rem;
+}
+
+.shoot-delete-kicker {
+  margin: 0 0 0.4rem;
+  color: var(--orange);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.shoot-delete-warning {
+  margin: 0 0 0.9rem;
+  color: var(--blue);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.shoot-delete-label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.85rem;
+}
+
+.shoot-delete-label span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shoot-delete-label input {
+  max-width: 12rem;
+  min-height: 42px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  background: var(--white);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+}
+
+.shoot-delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem 1.1rem;
+}
+
+.shoot-delete-submit {
+  color: var(--orange);
+  border-color: rgba(225, 95, 40, 0.35);
+}
+
+.shoot-delete-submit:hover:not(:disabled) {
+  border-color: var(--orange);
+}
+
 .portal-form {
   max-width: 28rem;
   margin-top: 1.5rem;
