@@ -162,9 +162,23 @@ export class PdfDocument {
     const size = jpegDimensions(bytes);
     const image = {
       id: this.images.length + 1,
+      kind: "jpeg",
       bytes,
       width: size.width,
       height: size.height,
+    };
+    this.images.push(image);
+    return image;
+  }
+
+  embedFlateImage({ width, height, rgb, mask = null }) {
+    const image = {
+      id: this.images.length + 1,
+      kind: "flate",
+      width,
+      height,
+      rgb,
+      mask,
     };
     this.images.push(image);
     return image;
@@ -198,12 +212,26 @@ export class PdfDocument {
     const boldId = add(
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\n"
     );
-    const imageIds = this.images.map((image) =>
-      add(
+    const imageIds = this.images.map((image) => {
+      if (image.kind === "flate") {
+        let smask = "";
+        if (image.mask) {
+          const maskId = add(
+            `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${image.mask.length} >>\nstream\n`,
+            image.mask
+          );
+          smask = `/SMask ${maskId} 0 R `;
+        }
+        return add(
+          `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 ${smask}/Filter /FlateDecode /Length ${image.rgb.length} >>\nstream\n`,
+          image.rgb
+        );
+      }
+      return add(
         `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.bytes.length} >>\nstream\n`,
         image.bytes
-      )
-    );
+      );
+    });
 
     const pageIds = [];
     for (const page of this.pages) {

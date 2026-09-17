@@ -2,7 +2,7 @@ import { json } from "./http.js";
 import { loadShootImages } from "./ingest.js";
 import { standardStatus } from "./derivatives.js";
 import { filenameDateFromShootDate } from "./names.js";
-import { WORDMARK_JPEG } from "./report-logo.js";
+import { AIRTHERE_MARK, OVERSITE_MARK } from "./report-marks.js";
 import { PAGE_SIZE, PdfDocument } from "./pdf-lite.js";
 import { imageViewUrl } from "./report-links.js";
 import { formatDisplayDate, formatGps } from "./validate.js";
@@ -55,7 +55,9 @@ export const reportReadiness = (shoot, images = []) => {
 };
 
 const reportFilename = (projectCode, shootDate) =>
-  `AirThere_${projectCode}_${filenameDateFromShootDate(shootDate)}_progress_report.pdf`;
+  `OVERSITE_${projectCode}_${filenameDateFromShootDate(shootDate)}_project_progress_report.pdf`;
+
+const markHeight = (mark, width) => width * (mark.height / mark.width);
 
 const fitContain = (srcW, srcH, boxW, boxH) => {
   const scale = Math.min(boxW / srcW, boxH / srcH);
@@ -68,36 +70,37 @@ const loadJpeg = async (bucket, key) => {
   return new Uint8Array(await object.arrayBuffer());
 };
 
-const drawFooter = (pdf, pageNumber, pageCount, projectName, location) => {
+const drawFooter = (pdf, oversite, pageNumber, projectName, location) => {
   const { width } = PAGE_SIZE;
-  const y = 28;
   pdf.setStroke(...RULE);
   pdf.strokeLine(42, 40, width - 42, 40, 0.4);
-  const parts = ["AirThere", projectName, location, `Page ${pageNumber}`].filter(Boolean);
+  const markW = 74;
+  const markH = markHeight(oversite, markW);
+  pdf.drawImage(oversite, 42, 22, markW, markH);
+  const parts = [projectName, location, `Page ${pageNumber}`].filter(Boolean);
   const line = parts.join("  ·  ");
   pdf.setFill(...MUTED);
-  const size = 8;
-  const textWidth = pdf.textWidth(line, size);
-  pdf.drawText(line, Math.max(42, (width - textWidth) / 2), y, size);
+  pdf.drawText(line, 42 + markW + 10, 26, 8);
 };
 
-const drawCover = (pdf, wordmark, meta) => {
+const drawCover = (pdf, airthere, oversite, meta) => {
   const { width, height } = PAGE_SIZE;
   const margin = 64;
-  let y = height - 88;
-  const logoW = 196;
-  const logoH = logoW * (wordmark.height / wordmark.width);
-  pdf.drawImage(wordmark, margin, y - logoH, logoW, logoH);
-  y -= logoH + 28;
+  let y = height - 72;
+  const airthereW = 210;
+  const airthereH = markHeight(airthere, airthereW);
+  pdf.drawImage(airthere, margin, y - airthereH, airthereW, airthereH);
+  y -= airthereH + 26;
+  const oversiteW = 168;
+  const oversiteH = markHeight(oversite, oversiteW);
+  pdf.drawImage(oversite, margin, y - oversiteH, oversiteW, oversiteH);
+  y -= oversiteH + 22;
   pdf.setFill(...ORANGE);
   pdf.fillRect(margin, y, 42, 2.2);
-  y -= 36;
+  y -= 32;
   pdf.setFill(...NAVY);
-  pdf.drawText("Construction Progress Report", margin, y, 22, { bold: true });
+  pdf.drawText("Project Progress Report", margin, y, 22, { bold: true });
   y -= 28;
-  pdf.setFill(...MUTED);
-  pdf.drawText("Photography record for a single Shoot Date", margin, y, 10);
-  y -= 36;
   pdf.setStroke(...RULE);
   pdf.strokeLine(margin, y, width - margin, y, 0.5);
   y -= 34;
@@ -105,7 +108,7 @@ const drawCover = (pdf, wordmark, meta) => {
   const rows = [
     ["Project", meta.projectName],
     ["Client", meta.customerName],
-    ["Report Date / Shoot Date", meta.shootDateDisplay],
+    ["Capture Date", meta.shootDateDisplay],
     ["Project Location", meta.location || "—"],
     ["GPS Coordinates", meta.gps || "—"],
   ];
@@ -119,7 +122,7 @@ const drawCover = (pdf, wordmark, meta) => {
   }
 };
 
-const drawImagePage = (pdf, items, pageNumber, pageCount, meta) => {
+const drawImagePage = (pdf, oversite, items, pageNumber, pageCount, meta) => {
   const { width, height } = PAGE_SIZE;
   const marginX = 36;
   const top = 36;
@@ -155,7 +158,7 @@ const drawImagePage = (pdf, items, pageNumber, pageCount, meta) => {
       captionSize
     );
   });
-  drawFooter(pdf, pageNumber, pageCount, meta.projectName, meta.location);
+  drawFooter(pdf, oversite, pageNumber, meta.projectName, meta.location);
 };
 
 export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
@@ -184,7 +187,8 @@ export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
   if (!ready.ok) return json({ error: ready.error }, ready.status);
 
   const pdf = new PdfDocument(PAGE_SIZE);
-  const wordmark = pdf.embedJpeg(WORDMARK_JPEG);
+  const airthere = pdf.embedFlateImage(AIRTHERE_MARK);
+  const oversite = pdf.embedFlateImage(OVERSITE_MARK);
   const meta = {
     projectName: shoot.project_name,
     customerName: shoot.customer_name,
@@ -219,12 +223,12 @@ export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
   const chunks = chunkReportImages(embedded);
   const pageCount = 1 + chunks.length;
   pdf.addPage();
-  drawCover(pdf, wordmark, meta);
-  drawFooter(pdf, 1, pageCount, meta.projectName, meta.location);
+  drawCover(pdf, airthere, oversite, meta);
+  drawFooter(pdf, oversite, 1, meta.projectName, meta.location);
 
   chunks.forEach((chunk, index) => {
     pdf.addPage();
-    drawImagePage(pdf, chunk, index + 2, pageCount, meta);
+    drawImagePage(pdf, oversite, chunk, index + 2, pageCount, meta);
   });
 
   const bytes = pdf.save();
