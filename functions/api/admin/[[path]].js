@@ -14,6 +14,7 @@ import {
   loadShootImages,
 } from "../../_lib/ingest.js";
 import { generateShootStandards, standardSummary } from "../../_lib/derivatives.js";
+import { generateShootReport } from "../../_lib/report.js";
 import {
   filenameDateFromShootDate,
   generatedFilename,
@@ -25,8 +26,12 @@ import {
   clean,
   formatArchiveDate,
   formatDisplayDate,
+  formatGps,
   formatTimestamp,
   suggestProjectCode,
+  validateLatitude,
+  validateLocation,
+  validateLongitude,
   validateProjectCode,
   validateShootDate,
   validateSlug,
@@ -52,6 +57,10 @@ const publicProject = (row) => ({
   name: row.name,
   code: row.code,
   status: row.status,
+  location: row.location || "",
+  latitude: row.latitude == null || row.latitude === "" ? null : Number(row.latitude),
+  longitude: row.longitude == null || row.longitude === "" ? null : Number(row.longitude),
+  gps_display: formatGps(row.latitude, row.longitude),
   created_at: row.created_at,
   image_count: Number(row.image_count || 0),
   code_locked: Number(row.image_count || 0) > 0,
@@ -65,6 +74,16 @@ const publicShoot = (row) => ({
   customer_slug: row.customer_slug,
   project_name: row.project_name,
   project_code: row.project_code,
+  project_location: row.project_location || "",
+  project_latitude:
+    row.project_latitude == null || row.project_latitude === ""
+      ? null
+      : Number(row.project_latitude),
+  project_longitude:
+    row.project_longitude == null || row.project_longitude === ""
+      ? null
+      : Number(row.project_longitude),
+  project_gps_display: formatGps(row.project_latitude, row.project_longitude),
   shoot_date: row.shoot_date,
   shoot_date_display: formatDisplayDate(row.shoot_date),
   status: row.status,
@@ -96,6 +115,28 @@ const decorateListedShoot = async (bucket, db, row) => {
     expected_count: images.length || row.expected_count,
     stored_count: inspected.filter((image) => image.stored).length,
   });
+};
+
+const parseProjectSite = (body, existing = {}) => {
+  const location =
+    body.location !== undefined ? validateLocation(body.location) : { value: existing.location || null };
+  const latitude =
+    body.latitude !== undefined ? validateLatitude(body.latitude) : { value: existing.latitude ?? null };
+  const longitude =
+    body.longitude !== undefined
+      ? validateLongitude(body.longitude)
+      : { value: existing.longitude ?? null };
+  if (location.error) return location;
+  if (latitude.error) return latitude;
+  if (longitude.error) return longitude;
+  if ((latitude.value == null) !== (longitude.value == null)) {
+    return { error: "Latitude and longitude must be provided together." };
+  }
+  return {
+    location: location.value,
+    latitude: latitude.value,
+    longitude: longitude.value,
+  };
 };
 
 const uniqueError = (error, fallback) => {
@@ -134,6 +175,9 @@ const shootSelect = `
          (SELECT COUNT(*) FROM images i WHERE i.shoot_id = s.id) AS image_count,
          p.name AS project_name,
          p.code AS project_code,
+         p.location AS project_location,
+         p.latitude AS project_latitude,
+         p.longitude AS project_longitude,
          p.customer_id,
          c.name AS customer_name,
          c.slug AS customer_slug
@@ -391,6 +435,8 @@ const projects = async (db, method, parts, request, url) => {
       if (!name) return json({ error: "Project name is required." }, 400);
       if (code.error) return json({ error: code.error }, 400);
       if (status.error) return json({ error: status.error }, 400);
+      const site = parseProjectSite(body);
+      if (site.error) return json({ error: site.error }, 400);
       const customer = await getCustomer(db, customerId);
       if (!customer) return json({ error: "Customer not found." }, 404);
 
@@ -398,10 +444,21 @@ const projects = async (db, method, parts, request, url) => {
       try {
         await db
           .prepare(
-            `INSERT INTO projects (id, customer_id, name, code, status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`
+            `INSERT INTO projects (
+               id, customer_id, name, code, status, location, latitude, longitude, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
-          .bind(id, customerId, name, code.value, status.value, nowIso())
+          .bind(
+            id,
+            customerId,
+            name,
+            code.value,
+            status.value,
+            site.location,
+            site.latitude,
+            site.longitude,
+            nowIso()
+          )
           .run();
       } catch (error) {
         return json({ error: uniqueError(error, "Unable to create project.") }, 409);
@@ -426,6 +483,9 @@ const projects = async (db, method, parts, request, url) => {
       let name = existing.name;
       let code = existing.code;
       let status = existing.status;
+      let location = existing.location || null;
+      let latitude = existing.latitude ?? null;
+      let longitude = existing.longitude ?? null;
 
       if (body.name !== undefined) {
         name = clean(body.name, 160);
@@ -450,11 +510,22 @@ const projects = async (db, method, parts, request, url) => {
         if (checked.error) return json({ error: checked.error }, 400);
         code = checked.value;
       }
+      if (body.location !== undefined || body.latitude !== undefined || body.longitude !== undefined) {
+        const site = parseProjectSite(body, existing);
+        if (site.error) return json({ error: site.error }, 400);
+        location = site.location;
+        latitude = site.latitude;
+        longitude = site.longitude;
+      }
 
       try {
         await db
-          .prepare(`UPDATE projects SET name = ?, code = ?, status = ? WHERE id = ?`)
-          .bind(name, code, status, existing.id)
+          .prepare(
+            `UPDATE projects
+             SET name = ?, code = ?, status = ?, location = ?, latitude = ?, longitude = ?
+             WHERE id = ?`
+          )
+          .bind(name, code, status, location, latitude, longitude, existing.id)
           .run();
       } catch (error) {
         return json({ error: uniqueError(error, "Unable to update project.") }, 409);
@@ -572,6 +643,16 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
     return json({
       shoot: publicShoot({ ...row, stored_count: storedCount, ...standardSummary(inspected) }),
       images: inspected,
+    });
+  }
+
+  if (parts.length === 3 && parts[2] === "report") {
+    if (method !== "GET") return methodNotAllowed("GET");
+    return generateShootReport({
+      db,
+      bucket: env.IMAGES,
+      shootId: parts[1],
+      origin: env.CANONICAL_HOST || "airthere.com.au",
     });
   }
 

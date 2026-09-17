@@ -796,6 +796,35 @@ const generateShootStandardsFromView = async () => {
   }
 };
 
+const generateShootReportFromView = async () => {
+  const shoot = shootView.shoot;
+  if (!shoot || shootView.busy) return;
+  shootView.busy = true;
+  shootView.actionError = "";
+  try {
+    setStatus("Generating report…");
+    const response = await fetch(`/api/admin/shoots/${shoot.id}/report`, {
+      credentials: "same-origin",
+      headers: { Accept: "application/pdf, application/json" },
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Report failed.");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    shootView.busy = false;
+    render();
+    setStatus("Report opened.");
+  } catch (error) {
+    shootView.busy = false;
+    shootView.actionError = error.message;
+    render();
+    setStatus(error.message, true);
+  }
+};
+
 const logoutFromAdmin = () => {
   const host = location.hostname;
   if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
@@ -938,11 +967,14 @@ const renderCustomers = () => {
 const renderProjects = () => {
   titleEl.textContent = "Projects";
   leadEl.textContent =
-    "Projects belong to a customer. The filename-safe code is used in image names and archive paths, and should stay stable once images exist.";
+    "Projects belong to a customer. Location and GPS belong to the project and are used on progress reports.";
   const selectedCustomerId = state.selectedCustomerId || state.customers[0]?.id || "";
   const visible = state.projects.filter(
     (project) => !selectedCustomerId || project.customer_id === selectedCustomerId
   );
+  const selected =
+    visible.find((project) => project.id === state.selectedProjectId) || null;
+  const canManage = isSuperAdmin();
   app.innerHTML = `
     <div class="admin-layout">
       <section class="admin-panel">
@@ -957,10 +989,18 @@ const renderProjects = () => {
                 .map(
                   (project) => `
               <li>
-                <strong>${escapeHtml(project.name)}</strong>
-                <span><code class="code-chip">${escapeHtml(project.code)}</code>${
-                  project.code_locked ? `<span class="badge">Code locked</span>` : ""
-                }</span>
+                <button type="button" class="${
+                  project.id === selected?.id ? "is-selected" : ""
+                }" data-open-project="${escapeHtml(project.id)}">
+                  <strong>${escapeHtml(project.name)} ${
+                    project.code_locked ? `<span class="badge">Code locked</span>` : ""
+                  }</strong>
+                  <span><code class="code-chip">${escapeHtml(project.code)}</code>${
+                    project.location
+                      ? ` · ${escapeHtml(project.location)}`
+                      : " · location pending"
+                  }</span>
+                </button>
               </li>`
                 )
                 .join("")}</ul>`
@@ -968,26 +1008,86 @@ const renderProjects = () => {
         }
       </section>
       <section class="admin-panel">
-        <h2>New project</h2>
+        <h2>${selected ? (canManage ? "Edit project" : "Project") : "New project"}</h2>
         ${
-          isSuperAdmin()
+          canManage
             ? `<form class="admin-form" id="project-form">
+          <input type="hidden" name="id" value="${escapeHtml(selected?.id || "")}" />
           <label>
             <span>Customer</span>
-            <select name="customer_id" required>${customerOptions(selectedCustomerId)}</select>
+            <select name="customer_id" required ${selected ? "disabled" : ""}>${customerOptions(
+              selected?.customer_id || selectedCustomerId
+            )}</select>
           </label>
           <label>
             <span>Project name</span>
-            <input type="text" name="name" required maxlength="160" placeholder="Mount Whitsunday Stage 1" />
+            <input type="text" name="name" required maxlength="160" placeholder="Mount Whitsunday Stage 1" value="${escapeHtml(
+              selected?.name || ""
+            )}" />
           </label>
           <label>
             <span>Filename-safe code</span>
-            <input type="text" name="code" required maxlength="80" placeholder="mount_whitsunday_stage_1" />
+            <input type="text" name="code" required maxlength="80" placeholder="mount_whitsunday_stage_1" value="${escapeHtml(
+              selected?.code || ""
+            )}" ${selected?.code_locked ? "disabled" : ""} />
           </label>
-          <p class="hint">Suggested automatically from the project name. Confirm or edit it before creating the project.</p>
-          <button class="button" type="submit">Create project</button>
+          ${
+            selected?.code_locked
+              ? `<p class="hint">The filename code is locked because images already exist.</p>`
+              : selected
+                ? `<p class="hint">Keep the filename code stable. It becomes locked once images exist.</p>`
+                : `<p class="hint">Suggested automatically from the project name. Confirm or edit it before creating the project.</p>`
+          }
+          <label>
+            <span>Project location</span>
+            <input type="text" name="location" maxlength="200" placeholder="Mount Whitsunday, Airlie Beach QLD" value="${escapeHtml(
+              selected?.location || ""
+            )}" />
+          </label>
+          <p class="hint">Human-readable site location for progress reports. Not a map.</p>
+          <div class="field-row">
+            <label>
+              <span>Latitude</span>
+              <input type="text" name="latitude" inputmode="decimal" placeholder="-20.267000" value="${escapeHtml(
+                selected?.latitude == null ? "" : String(selected.latitude)
+              )}" />
+            </label>
+            <label>
+              <span>Longitude</span>
+              <input type="text" name="longitude" inputmode="decimal" placeholder="148.716700" value="${escapeHtml(
+                selected?.longitude == null ? "" : String(selected.longitude)
+              )}" />
+            </label>
+          </div>
+          <p class="hint">Central GPS coordinates for the project site. Provide both, or leave both blank.</p>
+          ${
+            selected
+              ? `<label>
+            <span>Status</span>
+            <select name="status">
+              <option value="active" ${selected.status !== "disabled" ? "selected" : ""}>Active</option>
+              <option value="disabled" ${selected.status === "disabled" ? "selected" : ""}>Disabled</option>
+            </select>
+          </label>`
+              : ""
+          }
+          <div class="shoot-delete-actions">
+            <button class="button" type="submit">${selected ? "Save project" : "Create project"}</button>
+            ${
+              selected
+                ? `<button class="text-clear" type="button" id="project-new">New project</button>`
+                : ""
+            }
+          </div>
         </form>`
-            : `<p class="empty">Project creation is Super Admin only.</p>`
+            : selected
+              ? `<dl class="meta-grid shoot-meta">
+                  <div><dt>Name</dt><dd>${escapeHtml(selected.name)}</dd></div>
+                  <div><dt>Code</dt><dd>${escapeHtml(selected.code)}</dd></div>
+                  <div><dt>Location</dt><dd>${escapeHtml(selected.location || "—")}</dd></div>
+                  <div><dt>GPS</dt><dd>${escapeHtml(selected.gps_display || "—")}</dd></div>
+                </dl>`
+              : `<p class="empty">Project creation is Super Admin only.</p>`
         }
       </section>
     </div>
@@ -1286,6 +1386,12 @@ const renderShootView = (shootId) => {
   const showGenerateStandards =
     Number(shoot.standard_expected || 0) > 0 &&
     Number(shoot.standard_ready || 0) < Number(shoot.standard_expected || 0);
+  const showReport = (shoot.status === "verified" || shoot.status === "published") && count > 0;
+  const reportReady =
+    showReport &&
+    Number(shoot.standard_expected || 0) === count &&
+    Number(shoot.standard_ready || 0) === count &&
+    Number(shoot.standard_failed || 0) === 0;
   const standardsLine = standardImagesLabel(shoot);
   const standardsBanner = standardsLine
     ? `<div class="archive-standards">
@@ -1297,8 +1403,25 @@ const renderShootView = (shootId) => {
               }>Generate Standard Images</button>`
             : ""
         }
-      </div>`
-    : "";
+        ${
+          showReport
+            ? `<button class="button-secondary" type="button" id="shoot-generate-report" ${
+                shootView.busy || !reportReady ? "disabled" : ""
+              }>Generate Report</button>`
+            : ""
+        }
+      </div>
+      ${
+        showReport && !reportReady
+          ? `<p class="hint">Generate Standard Images for every photograph before creating the PDF report.</p>`
+          : ""
+      }`
+    : showReport
+      ? `<div class="archive-standards">
+          <button class="button-secondary" type="button" id="shoot-generate-report" disabled>Generate Report</button>
+        </div>
+        <p class="hint">Generate Standard Images for every photograph before creating the PDF report.</p>`
+      : "";
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
@@ -1310,6 +1433,16 @@ const renderShootView = (shootId) => {
           shoot.shoot_date
         )}</span></dd></div>
         <div><dt>Images</dt><dd>${count} original${count === 1 ? "" : "s"}</dd></div>
+        ${
+          shoot.project_location
+            ? `<div><dt>Location</dt><dd>${escapeHtml(shoot.project_location)}</dd></div>`
+            : ""
+        }
+        ${
+          shoot.project_gps_display
+            ? `<div><dt>GPS</dt><dd>${escapeHtml(shoot.project_gps_display)}</dd></div>`
+            : ""
+        }
       </dl>
       ${archiveBanner}
       ${standardsBanner}
@@ -1574,6 +1707,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const projectButton = event.target.closest("[data-open-project]");
+  if (projectButton) {
+    state.selectedProjectId = projectButton.getAttribute("data-open-project");
+    render();
+    return;
+  }
+
+  if (event.target.id === "project-new") {
+    event.preventDefault();
+    state.selectedProjectId = "";
+    render();
+    return;
+  }
+
   const viewShoot = event.target.closest("[data-view-shoot]");
   if (viewShoot) {
     event.preventDefault();
@@ -1710,6 +1857,12 @@ document.addEventListener("click", (event) => {
   if (event.target.id === "shoot-generate-standards") {
     event.preventDefault();
     generateShootStandardsFromView();
+    return;
+  }
+
+  if (event.target.id === "shoot-generate-report") {
+    event.preventDefault();
+    generateShootReportFromView();
     return;
   }
 
@@ -1922,12 +2075,27 @@ document.addEventListener("submit", async (event) => {
       }
     }
     if (formId === "project-form") {
-      await api("/api/admin/projects", { method: "POST", body: data });
-      setStatus("Project created.");
+      const payload = {
+        customer_id: data.customer_id,
+        name: data.name,
+        code: data.code,
+        status: data.status || "active",
+        location: data.location || "",
+        latitude: data.latitude || "",
+        longitude: data.longitude || "",
+      };
+      if (data.id) {
+        await api(`/api/admin/projects/${data.id}`, { method: "PATCH", body: payload });
+        setStatus("Project saved.");
+      } else {
+        const created = await api("/api/admin/projects", { method: "POST", body: payload });
+        state.selectedProjectId = created.project.id;
+        setStatus("Project created.");
+      }
     }
     await loadAll();
     render();
-    if (formId !== "customer-form") form.reset();
+    if (formId !== "customer-form" && formId !== "project-form") form.reset();
   } catch (error) {
     setStatus(error.message, true);
   }

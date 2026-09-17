@@ -191,6 +191,11 @@
         openLightbox(images, Number(button.getAttribute("data-index")));
       });
     });
+    const hashId = String(location.hash || "").replace(/^#image-/, "");
+    if (hashId) {
+      const index = images.findIndex((image) => image.id === hashId);
+      if (index >= 0) openLightbox(images, index);
+    }
   };
 
   const render = async () => {
@@ -231,5 +236,6 @@
   });
 
   window.addEventListener("popstate", render);
+  window.addEventListener("hashchange", render);
   render();
 })();
