@@ -21,7 +21,13 @@ import {
   readPortalSession,
 } from "../../_lib/session.js";
 import { clean, DATE_PATTERN, validateEmail, validateSlug } from "../../_lib/validate.js";
-import { createReportShare, sharePublicOrigin } from "../../_lib/share.js";
+import {
+  createReportShare,
+  listShootShares,
+  parseShareTtlDays,
+  revokeReportShare,
+  sharePublicOrigin,
+} from "../../_lib/share.js";
 import { reportReadiness } from "../../_lib/report.js";
 
 const formValue = async (request) => {
@@ -151,7 +157,11 @@ const session = async (context, db) => {
 
 const projects = async (context, db, parts) => {
   const isShare = parts.length === 5 && parts[2] === "shoots" && parts[4] === "share";
+  const isRevoke =
+    parts.length === 7 && parts[2] === "shoots" && parts[4] === "share" && parts[6] === "revoke";
   if (isShare) {
+    if (!["GET", "POST"].includes(context.request.method)) return methodNotAllowed("GET, POST");
+  } else if (isRevoke) {
     if (context.request.method !== "POST") return methodNotAllowed("POST");
   } else if (context.request.method !== "GET") {
     return methodNotAllowed("GET");
@@ -189,7 +199,20 @@ const projects = async (context, db, parts) => {
 
   if (parts.length === 5 && parts[2] === "shoots" && parts[4] === "share") {
     if (!DATE_PATTERN.test(parts[3])) return json({ error: "Not found." }, 404);
+    if (context.request.method === "GET") {
+      return listShares(db, auth.customer, project, parts[3]);
+    }
     return shareShoot(context, db, auth.customer, project, parts[3]);
+  }
+
+  if (
+    parts.length === 7 &&
+    parts[2] === "shoots" &&
+    parts[4] === "share" &&
+    parts[6] === "revoke"
+  ) {
+    if (!DATE_PATTERN.test(parts[3])) return json({ error: "Not found." }, 404);
+    return revokeShootShare(context, db, auth.customer, project, parts[3], parts[5]);
   }
 
   if (parts.length === 4 && parts[2] === "shoots") {
@@ -232,6 +255,11 @@ const shootGallery = async (db, customer, project, shootDate) => {
   if (!owned) return json({ error: "Not found." }, 404);
 
   const images = readyStandardImages(await loadShootImages(db, shoot.id)).map(publicPortalImage);
+  const shares = await listShootShares(db, {
+    customerId: customer.id,
+    projectId: project.id,
+    shootId: shoot.id,
+  });
   return json({
     customer: publicPortalCustomer(customer),
     project: publicPortalProject(project),
@@ -240,14 +268,11 @@ const shootGallery = async (db, customer, project, shootDate) => {
       display_date: publicPortalShoot(shoot, []).display_date,
     },
     images,
+    shares,
   });
 };
 
-const shareShoot = async (context, db, customer, project, shootDate) => {
-  const body = (await readJson(context.request)) || {};
-  const email = validateEmail(body.email);
-  if (email.error) return json({ error: email.error }, 400);
-
+const loadClientShoot = async (db, customer, project, shootDate) => {
   const shoot = await db
     .prepare(
       `SELECT s.*
@@ -256,9 +281,33 @@ const shareShoot = async (context, db, customer, project, shootDate) => {
     )
     .bind(project.id, shootDate)
     .first();
-  if (!shoot || !isClientShoot(shoot)) return json({ error: "Not found." }, 404);
+  if (!shoot || !isClientShoot(shoot)) return { error: json({ error: "Not found." }, 404) };
   const owned = await projectForCustomer(db, customer.id, shoot.project_id);
-  if (!owned) return json({ error: "Not found." }, 404);
+  if (!owned) return { error: json({ error: "Not found." }, 404) };
+  return { shoot };
+};
+
+const listShares = async (db, customer, project, shootDate) => {
+  const loaded = await loadClientShoot(db, customer, project, shootDate);
+  if (loaded.error) return loaded.error;
+  const shares = await listShootShares(db, {
+    customerId: customer.id,
+    projectId: project.id,
+    shootId: loaded.shoot.id,
+  });
+  return json({ shares });
+};
+
+const shareShoot = async (context, db, customer, project, shootDate) => {
+  const body = (await readJson(context.request)) || {};
+  const email = validateEmail(body.email);
+  if (email.error) return json({ error: email.error }, 400);
+  const ttl = parseShareTtlDays(body.expires_in_days);
+  if (ttl.error) return json({ error: ttl.error }, 400);
+
+  const loaded = await loadClientShoot(db, customer, project, shootDate);
+  if (loaded.error) return loaded.error;
+  const shoot = loaded.shoot;
 
   const images = await loadShootImages(db, shoot.id);
   const ready = reportReadiness(shoot, images);
@@ -272,10 +321,24 @@ const shareShoot = async (context, db, customer, project, shootDate) => {
     project,
     shoot,
     email: email.value,
+    expiresInDays: ttl.value,
     origin: sharePublicOrigin(context.request, context.env),
     env: context.env,
     request: context.request,
   });
   if (created.error) return json({ error: created.error }, created.status || 502);
-  return json({ ok: true });
+  return json({ ok: true, share: created.share });
+};
+
+const revokeShootShare = async (context, db, customer, project, shootDate, shareId) => {
+  const loaded = await loadClientShoot(db, customer, project, shootDate);
+  if (loaded.error) return loaded.error;
+  const revoked = await revokeReportShare(db, {
+    customerId: customer.id,
+    projectId: project.id,
+    shootId: loaded.shoot.id,
+    shareId,
+  });
+  if (revoked.error) return json({ error: revoked.error }, revoked.status || 400);
+  return json({ ok: true, share: revoked.share });
 };

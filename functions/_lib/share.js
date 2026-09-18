@@ -13,6 +13,9 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_MS = 45 * 1000;
 export const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,64}$/;
+export const SHARE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const SHARE_TTL_DAYS = new Set([1, 7, 30]);
+export const DEFAULT_SHARE_TTL_DAYS = 7;
 
 const bytesToHex = (bytes) =>
   [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -93,6 +96,32 @@ const shareSelect = `
     JOIN shoots s ON s.id = r.shoot_id
 `;
 
+export const parseShareTtlDays = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return { value: DEFAULT_SHARE_TTL_DAYS };
+  }
+  const days = Number(value);
+  if (!SHARE_TTL_DAYS.has(days)) return { error: "Choose 1, 7, or 30 days." };
+  return { value: days };
+};
+
+export const shareAccessStatus = (share, now = Date.now()) => {
+  if (share?.revoked_at) return "revoked";
+  const expiresAt = share?.expires_at ? Date.parse(share.expires_at) : NaN;
+  if (!Number.isFinite(expiresAt) || expiresAt <= now) return "expired";
+  return "active";
+};
+
+export const isShareLive = (share, now = Date.now()) => shareAccessStatus(share, now) === "active";
+
+export const publicPortalShare = (share, now = Date.now()) => ({
+  id: share.id,
+  recipient_email: share.recipient_email,
+  created_at: share.created_at,
+  expires_at: share.expires_at,
+  status: shareAccessStatus(share, now),
+});
+
 export const loadShareByToken = async (db, token) => {
   if (!SHARE_TOKEN_PATTERN.test(token)) return null;
   const tokenHash = await hashToken(token);
@@ -100,17 +129,51 @@ export const loadShareByToken = async (db, token) => {
   if (!share) return null;
   if (share.customer_status !== "active" || share.project_status !== "active") return null;
   if (!isClientShoot({ status: share.shoot_status })) return null;
+  if (!isShareLive(share)) return null;
   return share;
 };
 
+export const listShootShares = async (db, { customerId, projectId, shootId }) => {
+  const rows = await db
+    .prepare(
+      `SELECT id, recipient_email, created_at, expires_at, revoked_at
+       FROM report_shares
+       WHERE customer_id = ? AND project_id = ? AND shoot_id = ?
+       ORDER BY created_at DESC`
+    )
+    .bind(customerId, projectId, shootId)
+    .all();
+  const now = Date.now();
+  return (rows.results || []).map((row) => publicPortalShare(row, now));
+};
+
+export const revokeReportShare = async (db, { customerId, projectId, shootId, shareId }) => {
+  if (!SHARE_ID_PATTERN.test(shareId)) return { error: "Not found.", status: 404 };
+  const row = await db
+    .prepare(
+      `SELECT id, recipient_email, created_at, expires_at, revoked_at
+       FROM report_shares
+       WHERE id = ? AND customer_id = ? AND project_id = ? AND shoot_id = ?`
+    )
+    .bind(shareId, customerId, projectId, shootId)
+    .first();
+  if (!row) return { error: "Not found.", status: 404 };
+  if (shareAccessStatus(row) !== "active") {
+    return { error: "This share is no longer active.", status: 409 };
+  }
+  const revokedAt = nowIso();
+  await db.prepare(`UPDATE report_shares SET revoked_at = ? WHERE id = ?`).bind(revokedAt, row.id).run();
+  return { ok: true, share: publicPortalShare({ ...row, revoked_at: revokedAt }) };
+};
+
 export const shareUnavailable = () =>
-  json({ error: "This report link is not available." }, 404);
+  json({ error: "This report is no longer available." }, 404);
 
 export const requireShareSession = async ({ request, env, db, token }) => {
   const share = await loadShareByToken(db, token);
   if (!share) return { error: shareUnavailable() };
   const session = await readShareSession(request, env.SESSION_SECRET);
-  if (!session || session.sid !== share.id) {
+  if (!session || session.sid !== share.id || !isShareLive(share)) {
     return { error: json({ error: "Please verify to view this report." }, 401), share };
   }
   return { share, session };
@@ -150,17 +213,31 @@ const otpHtml = ({ code, customerName, projectName }) => `
   </div>
 `;
 
-export const createReportShare = async ({ db, customer, project, shoot, email, origin, env, request }) => {
+export const createReportShare = async ({
+  db,
+  customer,
+  project,
+  shoot,
+  email,
+  origin,
+  env,
+  request,
+  expiresInDays = DEFAULT_SHARE_TTL_DAYS,
+}) => {
+  const ttl = parseShareTtlDays(expiresInDays);
+  if (ttl.error) return { error: ttl.error, status: 400 };
   const token = randomShareToken();
   const tokenHash = await hashToken(token);
   const id = newId();
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.parse(createdAt) + ttl.value * 24 * 60 * 60 * 1000).toISOString();
   await db
     .prepare(
       `INSERT INTO report_shares (
-         id, customer_id, project_id, shoot_id, recipient_email, token_hash, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+         id, customer_id, project_id, shoot_id, recipient_email, token_hash, created_at, expires_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, customer.id, project.id, shoot.id, email, tokenHash, nowIso())
+    .bind(id, customer.id, project.id, shoot.id, email, tokenHash, createdAt, expiresAt)
     .run();
 
   const captureDate = formatDisplayDate(shoot.shoot_date);
@@ -181,7 +258,17 @@ export const createReportShare = async ({ db, customer, project, shoot, email, o
     await db.prepare(`DELETE FROM report_shares WHERE id = ?`).bind(id).run();
     return { error: mailed.error, status: 502 };
   }
-  return { ok: true, id };
+  return {
+    ok: true,
+    id,
+    share: publicPortalShare({
+      id,
+      recipient_email: email,
+      created_at: createdAt,
+      expires_at: expiresAt,
+      revoked_at: null,
+    }),
+  };
 };
 
 const persistOtp = async (db, shareId, otpHash, expiresAt, sentAt) => {
