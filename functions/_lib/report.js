@@ -1,6 +1,6 @@
 import { json } from "./http.js";
 import { loadShootImages } from "./ingest.js";
-import { standardStatus } from "./derivatives.js";
+import { requestReportJpeg, standardStatus } from "./derivatives.js";
 import { filenameDateFromShootDate } from "./names.js";
 import { AIRTHERE_MARK, OVERSITE_MARK } from "./report-marks.js";
 import { PAGE_SIZE, PdfDocument } from "./pdf-lite.js";
@@ -15,6 +15,7 @@ const IMAGES_PER_PAGE = 6;
 const COLS = 2;
 const ROWS = 3;
 const REPORTABLE_STATUSES = new Set(["verified", "published"]);
+const IMAGE_CORNER_RADIUS = 10;
 
 export const reportPageCount = (imageCount) =>
   1 + Math.ceil(Math.max(0, Number(imageCount) || 0) / IMAGES_PER_PAGE);
@@ -25,6 +26,15 @@ export const chunkReportImages = (images = []) => {
     pages.push(images.slice(index, index + IMAGES_PER_PAGE));
   }
   return pages;
+};
+
+export const imageRefLabel = (seq) => {
+  const n = Number(seq);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("Image sequence must be an integer starting at 1.");
+  }
+  const padded = n > 999 ? String(n) : String(n).padStart(3, "0");
+  return `Image Ref #${padded}`;
 };
 
 const reportableImages = (images = []) =>
@@ -126,17 +136,19 @@ const drawCover = (pdf, airthere, oversite, meta) => {
   }
 };
 
-const drawImagePage = (pdf, airthere, oversite, items, pageNumber, pageCount, meta) => {
+const drawImagePage = (pdf, airthere, oversite, items, pageNumber, meta) => {
   const { width, height } = PAGE_SIZE;
-  const marginX = 36;
+  const marginX = 44;
   const headerLogoW = width / 6;
   const headerLogoH = markHeight(airthere, headerLogoW);
-  const top = 22 + headerLogoH + 12;
+  const top = 22 + headerLogoH + 18;
   pdf.drawImage(airthere, marginX, height - 22 - headerLogoH, headerLogoW, headerLogoH);
-  const footerGap = 52;
-  const gapX = 16;
-  const gapY = 18;
-  const captionH = 14;
+  const footerGap = 58;
+  const gapX = 28;
+  const gapY = 32;
+  const captionH = 16;
+  const insetX = 8;
+  const insetY = 6;
   const usableW = width - marginX * 2;
   const usableH = height - top - footerGap;
   const cellW = (usableW - gapX) / COLS;
@@ -148,15 +160,19 @@ const drawImagePage = (pdf, airthere, oversite, items, pageNumber, pageCount, me
     const row = Math.floor(index / COLS);
     const cellX = marginX + col * (cellW + gapX);
     const cellTop = height - top - row * (cellH + gapY);
-    const fitted = fitContain(item.image.width, item.image.height, cellW, imageBoxH);
+    const boxW = cellW - insetX * 2;
+    const boxH = imageBoxH - insetY;
+    const fitted = fitContain(item.image.width, item.image.height, boxW, boxH);
     const imgX = cellX + (cellW - fitted.width) / 2;
-    const imgY = cellTop - fitted.height - (imageBoxH - fitted.height) / 2;
-    pdf.drawImage(item.image, imgX, imgY, fitted.width, fitted.height);
+    const imgY = cellTop - insetY / 2 - fitted.height - (boxH - fitted.height) / 2;
+    pdf.drawImage(item.image, imgX, imgY, fitted.width, fitted.height, {
+      radius: IMAGE_CORNER_RADIUS,
+    });
     pdf.link(imgX, imgY, fitted.width, fitted.height, item.href);
     pdf.setFill(...MUTED);
-    const caption = item.filename;
-    const captionSize = 7;
-    const captionY = imgY - 10;
+    const caption = imageRefLabel(item.seq);
+    const captionSize = 8;
+    const captionY = imgY - 12;
     const captionWidth = pdf.textWidth(caption, captionSize);
     pdf.drawText(
       caption,
@@ -168,8 +184,32 @@ const drawImagePage = (pdf, airthere, oversite, items, pageNumber, pageCount, me
   drawFooter(pdf, oversite, pageNumber, meta.projectName, meta.location);
 };
 
-export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
+export const buildShootReportPdf = ({ meta, jpegImages = [] }) => {
+  const pdf = new PdfDocument(PAGE_SIZE);
+  const airthere = pdf.embedFlateImage(AIRTHERE_MARK);
+  const oversite = pdf.embedFlateImage(OVERSITE_MARK);
+  const embedded = jpegImages.map((item) => ({
+    image: pdf.embedJpeg(item.bytes),
+    seq: item.seq,
+    href: item.href,
+  }));
+
+  const chunks = chunkReportImages(embedded);
+  pdf.addPage();
+  drawCover(pdf, airthere, oversite, meta);
+  drawFooter(pdf, oversite, 1, meta.projectName, meta.location);
+
+  chunks.forEach((chunk, index) => {
+    pdf.addPage();
+    drawImagePage(pdf, airthere, oversite, chunk, index + 2, meta);
+  });
+
+  return pdf.save();
+};
+
+export const generateShootReport = async ({ db, bucket, transformer, shootId, origin }) => {
   if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+  if (!transformer) return json({ error: "Image transformer is not bound." }, 503);
   const shoot = await db
     .prepare(
       `SELECT s.*,
@@ -193,9 +233,6 @@ export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
   const ready = reportReadiness(shoot, images);
   if (!ready.ok) return json({ error: ready.error }, ready.status);
 
-  const pdf = new PdfDocument(PAGE_SIZE);
-  const airthere = pdf.embedFlateImage(AIRTHERE_MARK);
-  const oversite = pdf.embedFlateImage(OVERSITE_MARK);
   const meta = {
     projectName: shoot.project_name,
     customerName: shoot.customer_name,
@@ -204,13 +241,14 @@ export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
     gps: formatGps(shoot.project_latitude, shoot.project_longitude),
   };
 
-  const embedded = [];
+  const jpegImages = [];
   try {
     for (const image of ready.images) {
-      const bytes = await loadJpeg(bucket, image.web_key);
-      embedded.push({
-        image: pdf.embedJpeg(bytes),
-        filename: image.generated_filename,
+      const standardBytes = await loadJpeg(bucket, image.web_key);
+      const reportJpeg = await requestReportJpeg(transformer, standardBytes);
+      jpegImages.push({
+        bytes: reportJpeg.bytes,
+        seq: image.seq,
         href: imageViewUrl({
           origin,
           slug: shoot.customer_slug,
@@ -222,23 +260,12 @@ export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
     }
   } catch (error) {
     return json(
-      { error: error.message || "A Standard image could not be read for the report." },
+      { error: error.message || "A report image could not be prepared." },
       409
     );
   }
 
-  const chunks = chunkReportImages(embedded);
-  const pageCount = 1 + chunks.length;
-  pdf.addPage();
-  drawCover(pdf, airthere, oversite, meta);
-  drawFooter(pdf, oversite, 1, meta.projectName, meta.location);
-
-  chunks.forEach((chunk, index) => {
-    pdf.addPage();
-    drawImagePage(pdf, airthere, oversite, chunk, index + 2, pageCount, meta);
-  });
-
-  const bytes = pdf.save();
+  const bytes = buildShootReportPdf({ meta, jpegImages });
   const filename = reportFilename(shoot.project_code, shoot.shoot_date);
   return new Response(bytes, {
     status: 200,

@@ -651,6 +651,7 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
     return generateShootReport({
       db,
       bucket: env.IMAGES,
+      transformer: env.IMAGE_TRANSFORMER,
       shootId: parts[1],
       origin: env.CANONICAL_HOST || "airthere.com.au",
     });

@@ -4,6 +4,10 @@ import { webObjectKey } from "./names.js";
 const JPEG_CONTENT_TYPE = "image/jpeg";
 export const MAX_STANDARD_SOURCE_BYTES = 20 * 1024 * 1024;
 const TRANSFORM_URL = "https://airthere-image-transform/v1/standard";
+const REPORT_TRANSFORM_URL = "https://airthere-image-transform/v1/report";
+
+export const REPORT_LONG_EDGE = 1000;
+export const REPORT_JPEG_QUALITY = 72;
 
 export const standardStatus = (image) => {
   if (image?.web_key && (image.web_status === "ready" || !image.web_status)) return "ready";
@@ -42,15 +46,15 @@ const transformerError = async (response) => {
   return text ? text.slice(0, 300) : `Transformer returned ${response.status}.`;
 };
 
-const requestStandardJpeg = async (transformer, source) => {
-  const response = await transformer.fetch(TRANSFORM_URL, {
+const requestEncodedJpeg = async (transformer, url, source, emptyMessage) => {
+  const response = await transformer.fetch(url, {
     method: "POST",
     headers: { "content-type": JPEG_CONTENT_TYPE },
     body: source,
   });
   if (!response.ok) throw new Error(await transformerError(response));
   const webBytes = new Uint8Array(await response.arrayBuffer());
-  if (!webBytes.byteLength) throw new Error("Standard JPEG was empty.");
+  if (!webBytes.byteLength) throw new Error(emptyMessage);
   return {
     bytes: webBytes,
     sourceWidth: Number(response.headers.get("x-airthere-source-width") || 0),
@@ -59,6 +63,17 @@ const requestStandardJpeg = async (transformer, source) => {
     height: Number(response.headers.get("x-airthere-height") || 0),
   };
 };
+
+const requestStandardJpeg = async (transformer, source) =>
+  requestEncodedJpeg(transformer, TRANSFORM_URL, source, "Standard JPEG was empty.");
+
+export const requestReportJpeg = async (transformer, source) =>
+  requestEncodedJpeg(
+    transformer,
+    REPORT_TRANSFORM_URL,
+    source,
+    "Report JPEG was empty."
+  );
 
 export const generateStandardForImage = async ({
   db,
