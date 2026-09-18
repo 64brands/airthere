@@ -90,11 +90,11 @@ const drawFooter = (pdf, oversite, pageNumber, projectName, location) => {
 const drawCover = (pdf, airthere, oversite, meta) => {
   const { width, height } = PAGE_SIZE;
   const margin = 64;
-  let y = height - 72;
-  const airthereW = 210;
+  const airthereW = width * 0.36;
   const airthereH = markHeight(airthere, airthereW);
-  pdf.drawImage(airthere, margin, y - airthereH, airthereW, airthereH);
-  y -= airthereH + 26;
+  let y = height - 56;
+  pdf.drawImage(airthere, (width - airthereW) / 2, y - airthereH, airthereW, airthereH);
+  y -= airthereH + 56;
   const oversiteW = 168;
   const oversiteH = markHeight(oversite, oversiteW);
   pdf.drawImage(oversite, margin, y - oversiteH, oversiteW, oversiteH);
@@ -126,10 +126,13 @@ const drawCover = (pdf, airthere, oversite, meta) => {
   }
 };
 
-const drawImagePage = (pdf, oversite, items, pageNumber, pageCount, meta) => {
+const drawImagePage = (pdf, airthere, oversite, items, pageNumber, pageCount, meta) => {
   const { width, height } = PAGE_SIZE;
   const marginX = 36;
-  const top = 36;
+  const headerLogoW = width / 12;
+  const headerLogoH = markHeight(airthere, headerLogoW);
+  const top = 22 + headerLogoH + 12;
+  pdf.drawImage(airthere, marginX, height - 22 - headerLogoH, headerLogoW, headerLogoH);
   const footerGap = 52;
   const gapX = 16;
   const gapY = 18;
@@ -232,7 +235,7 @@ export const generateShootReport = async ({ db, bucket, shootId, origin }) => {
 
   chunks.forEach((chunk, index) => {
     pdf.addPage();
-    drawImagePage(pdf, oversite, chunk, index + 2, pageCount, meta);
+    drawImagePage(pdf, airthere, oversite, chunk, index + 2, pageCount, meta);
   });
 
   const bytes = pdf.save();
