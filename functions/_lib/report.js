@@ -113,7 +113,7 @@ const drawCover = (pdf, airthere, oversite, meta) => {
   pdf.fillRect(margin, y, 42, 2.2);
   y -= 32;
   pdf.setFill(...NAVY);
-  pdf.drawText("Project Progress Report", margin, y, 22);
+  pdf.drawText("Project Progress Report", margin, y, 22, { face: "medium" });
   y -= 28;
   pdf.setStroke(...RULE);
   pdf.strokeLine(margin, y, width - margin, y, 0.5);
@@ -128,10 +128,10 @@ const drawCover = (pdf, airthere, oversite, meta) => {
   ];
   for (const [label, value, valueSize] of rows) {
     pdf.setFill(...ORANGE);
-    pdf.drawText(label.toUpperCase(), margin, y, 8, { bold: true });
+    pdf.drawText(label.toUpperCase(), margin, y, 8, { face: "medium" });
     y -= 16;
     pdf.setFill(...NAVY);
-    pdf.drawText(value, margin, y, valueSize);
+    pdf.drawText(value, margin, y, valueSize, { face: "light" });
     y -= 28;
   }
 };
