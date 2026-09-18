@@ -226,7 +226,102 @@ body.portal-body .skip-link:focus {
 }
 
 .portal-page-gallery .portal-heading {
-  margin-bottom: 1.7rem;
+  margin-bottom: 0;
+}
+
+.portal-gallery-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.portal-share-open {
+  min-height: 2.6rem;
+  padding: 0.2rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portal-share-open:hover,
+.portal-share-cancel:hover {
+  color: var(--orange);
+}
+
+.portal-share-panel {
+  max-width: 28rem;
+  margin: 0 0 1.6rem;
+  padding: 1.15rem 1.2rem 1.2rem;
+  background: var(--white);
+  border-radius: var(--portal-radius-card);
+  box-shadow: var(--portal-shadow-soft);
+}
+
+.portal-share-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.portal-share-panel input[type="email"] {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(31, 51, 86, 0.14);
+  border-radius: var(--portal-radius-control);
+  background: #fff;
+  color: var(--blue);
+}
+
+.portal-share-panel input[type="email"]:focus {
+  border-color: var(--orange);
+  outline: none;
+}
+
+.portal-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem 1rem;
+  margin-top: 0.85rem;
+}
+
+.portal-share-panel .button {
+  min-height: 46px;
+  margin: 0;
+  border-radius: var(--portal-radius-control);
+}
+
+.portal-share-cancel {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.portal-share-status {
+  min-height: 1.2rem;
+  margin: 0.7rem 0 0;
+  color: var(--blue);
+  font-size: 0.9rem;
+}
+
+.portal-share-status.is-error {
+  color: var(--orange);
 }
 
 .portal-project-list,
@@ -567,7 +662,11 @@ body.lightbox-open {
   }
 
   .portal-login-form input[type="password"],
-  .portal-body .portal-login-form .button {
+  .portal-body .portal-login-form .button,
+  .portal-share-open,
+  .portal-share-cancel,
+  .portal-share-panel input[type="email"],
+  .portal-share-panel .button {
     min-height: 56px;
   }
 }

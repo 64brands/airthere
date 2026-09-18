@@ -207,7 +207,14 @@ export const buildShootReportPdf = ({ meta, jpegImages = [] }) => {
   return pdf.save();
 };
 
-export const generateShootReport = async ({ db, bucket, transformer, shootId, origin }) => {
+export const generateShootReport = async ({
+  db,
+  bucket,
+  transformer,
+  shootId,
+  origin,
+  imageHref,
+}) => {
   if (!bucket) return json({ error: "Image archive is not bound." }, 503);
   if (!transformer) return json({ error: "Image transformer is not bound." }, 503);
   const shoot = await db
@@ -249,7 +256,9 @@ export const generateShootReport = async ({ db, bucket, transformer, shootId, or
       jpegImages.push({
         bytes: reportJpeg.bytes,
         seq: image.seq,
-        href: imageViewUrl({
+        href: typeof imageHref === "function"
+          ? imageHref(image)
+          : imageViewUrl({
           origin,
           slug: shoot.customer_slug,
           projectCode: shoot.project_code,

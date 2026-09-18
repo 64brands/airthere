@@ -4,6 +4,7 @@ export const RESERVED_SLUGS = new Set([
   "assets",
   "media",
   "portal",
+  "share",
   "login",
   "legal",
   "contact",

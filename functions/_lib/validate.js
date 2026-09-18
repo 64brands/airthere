@@ -7,6 +7,16 @@ export const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 export const clean = (value, limit = 200) =>
   typeof value === "string" ? value.trim().slice(0, limit) : "";
 
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const validateEmail = (value) => {
+  const email = clean(value, 254).toLowerCase();
+  if (!EMAIL_PATTERN.test(email) || email.includes("..") || email.startsWith(".") || email.endsWith(".")) {
+    return { error: "Enter a valid email address." };
+  }
+  return { value: email };
+};
+
 export const suggestProjectCode = (name) =>
   clean(name, 120)
     .normalize("NFKD")

@@ -20,7 +20,9 @@ import {
   createPortalCookie,
   readPortalSession,
 } from "../../_lib/session.js";
-import { clean, DATE_PATTERN, validateSlug } from "../../_lib/validate.js";
+import { clean, DATE_PATTERN, validateEmail, validateSlug } from "../../_lib/validate.js";
+import { createReportShare, sharePublicOrigin } from "../../_lib/share.js";
+import { reportReadiness } from "../../_lib/report.js";
 
 const formValue = async (request) => {
   const contentType = request.headers.get("content-type") || "";
@@ -148,7 +150,12 @@ const session = async (context, db) => {
 };
 
 const projects = async (context, db, parts) => {
-  if (context.request.method !== "GET") return methodNotAllowed("GET");
+  const isShare = parts.length === 5 && parts[2] === "shoots" && parts[4] === "share";
+  if (isShare) {
+    if (context.request.method !== "POST") return methodNotAllowed("POST");
+  } else if (context.request.method !== "GET") {
+    return methodNotAllowed("GET");
+  }
   const auth = await requirePortalCustomer(context, db);
   if (auth.error) return auth.error;
 
@@ -178,6 +185,11 @@ const projects = async (context, db, parts) => {
       project: publicPortalProject(project),
       shoots,
     });
+  }
+
+  if (parts.length === 5 && parts[2] === "shoots" && parts[4] === "share") {
+    if (!DATE_PATTERN.test(parts[3])) return json({ error: "Not found." }, 404);
+    return shareShoot(context, db, auth.customer, project, parts[3]);
   }
 
   if (parts.length === 4 && parts[2] === "shoots") {
@@ -229,4 +241,41 @@ const shootGallery = async (db, customer, project, shootDate) => {
     },
     images,
   });
+};
+
+const shareShoot = async (context, db, customer, project, shootDate) => {
+  const body = (await readJson(context.request)) || {};
+  const email = validateEmail(body.email);
+  if (email.error) return json({ error: email.error }, 400);
+
+  const shoot = await db
+    .prepare(
+      `SELECT s.*
+       FROM shoots s
+       WHERE s.project_id = ? AND s.shoot_date = ?`
+    )
+    .bind(project.id, shootDate)
+    .first();
+  if (!shoot || !isClientShoot(shoot)) return json({ error: "Not found." }, 404);
+  const owned = await projectForCustomer(db, customer.id, shoot.project_id);
+  if (!owned) return json({ error: "Not found." }, 404);
+
+  const images = await loadShootImages(db, shoot.id);
+  const ready = reportReadiness(shoot, images);
+  if (!ready.ok) {
+    return json({ error: "This report is not available yet." }, 409);
+  }
+
+  const created = await createReportShare({
+    db,
+    customer,
+    project,
+    shoot,
+    email: email.value,
+    origin: sharePublicOrigin(context.request, context.env),
+    env: context.env,
+    request: context.request,
+  });
+  if (created.error) return json({ error: created.error }, created.status || 502);
+  return json({ ok: true });
 };

@@ -1,6 +1,8 @@
 const encoder = new TextEncoder();
 const COOKIE = "airthere_portal";
+const SHARE_COOKIE = "airthere_share";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+const SHARE_MAX_AGE_SECONDS = 60 * 60 * 24;
 
 const b64url = (bytes) =>
   btoa(String.fromCharCode(...bytes))
@@ -85,7 +87,39 @@ export const readPortalSession = async (request, secret) => {
   const match = header.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`));
   if (!match) return null;
   const payload = await verify(secret, match[1]);
-  if (!payload || payload.v !== 1 || !payload.cid) return null;
+  if (!payload || payload.v !== 1 || !payload.cid || payload.kind) return null;
+  if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+  return payload;
+};
+
+const cookieParts = (name, value, maxAge, secure) => {
+  const parts = [
+    `${name}=${value}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+};
+
+export const createShareCookie = async ({ secret, shareId, secure }) => {
+  if (!secret || !shareId) return null;
+  const exp = Math.floor(Date.now() / 1000) + SHARE_MAX_AGE_SECONDS;
+  const token = await sign(secret, { v: 1, kind: "share", sid: shareId, exp });
+  return cookieParts(SHARE_COOKIE, token, SHARE_MAX_AGE_SECONDS, secure);
+};
+
+export const clearShareCookie = (secure) => cookieParts(SHARE_COOKIE, "", 0, secure);
+
+export const readShareSession = async (request, secret) => {
+  if (!secret) return null;
+  const header = request.headers.get("Cookie") || "";
+  const match = header.match(new RegExp(`(?:^|;\\s*)${SHARE_COOKIE}=([^;]+)`));
+  if (!match) return null;
+  const payload = await verify(secret, match[1]);
+  if (!payload || payload.v !== 1 || payload.kind !== "share" || !payload.sid) return null;
   if (payload.exp && payload.exp * 1000 < Date.now()) return null;
   return payload;
 };
