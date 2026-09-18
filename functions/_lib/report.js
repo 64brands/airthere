@@ -143,12 +143,12 @@ const drawImagePage = (pdf, airthere, oversite, items, pageNumber, meta) => {
   const headerLogoH = markHeight(airthere, headerLogoW);
   const top = 22 + headerLogoH + 18;
   pdf.drawImage(airthere, marginX, height - 22 - headerLogoH, headerLogoW, headerLogoH);
-  const footerGap = 58;
-  const gapX = 28;
-  const gapY = 32;
+  const footerGap = 56;
+  const gapX = 26;
+  const gapY = 24;
   const captionH = 16;
-  const insetX = 8;
-  const insetY = 6;
+  const insetX = 6;
+  const insetY = 4;
   const usableW = width - marginX * 2;
   const usableH = height - top - footerGap;
   const cellW = (usableW - gapX) / COLS;
