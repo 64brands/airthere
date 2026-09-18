@@ -129,7 +129,7 @@ const drawCover = (pdf, airthere, oversite, meta) => {
 const drawImagePage = (pdf, airthere, oversite, items, pageNumber, pageCount, meta) => {
   const { width, height } = PAGE_SIZE;
   const marginX = 36;
-  const headerLogoW = width / 12;
+  const headerLogoW = width / 6;
   const headerLogoH = markHeight(airthere, headerLogoW);
   const top = 22 + headerLogoH + 12;
   pdf.drawImage(airthere, marginX, height - 22 - headerLogoH, headerLogoW, headerLogoH);
