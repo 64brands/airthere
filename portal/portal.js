@@ -12,10 +12,15 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;");
 
-  const api = async (path) => {
+  const api = async (path, options = {}) => {
     const response = await fetch(path, {
       credentials: "same-origin",
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -169,7 +174,29 @@
         { label: heading },
       ])}
       <p class="portal-sub">${escapeHtml(project.name || "")}</p>
-      <h1 class="portal-heading">${escapeHtml(heading)}</h1>
+      <div class="portal-gallery-head">
+        <h1 class="portal-heading">${escapeHtml(heading)}</h1>
+        ${
+          images.length
+            ? `<button class="portal-share-open" type="button" id="portal-share-open">Share Report</button>`
+            : ""
+        }
+      </div>
+      ${
+        images.length
+          ? `<div class="portal-share-panel" id="portal-share-panel" hidden>
+              <form id="portal-share-form">
+                <label class="portal-share-label" for="portal-share-email">Recipient email</label>
+                <input id="portal-share-email" name="email" type="email" autocomplete="email" required />
+                <div class="portal-share-actions">
+                  <button class="button" type="submit">Share Report</button>
+                  <button class="portal-share-cancel" type="button" id="portal-share-cancel">Cancel</button>
+                </div>
+              </form>
+              <p class="portal-share-status" id="portal-share-status" role="status"></p>
+            </div>`
+          : ""
+      }
       ${
         images.length
           ? `<div class="portal-gallery">
@@ -196,6 +223,53 @@
       const index = images.findIndex((image) => image.id === hashId);
       if (index >= 0) openLightbox(images, index);
     }
+    bindShareForm(project.code, shoot.date);
+  };
+
+  const bindShareForm = (projectCode, shootDate) => {
+    const open = root.querySelector("#portal-share-open");
+    const panel = root.querySelector("#portal-share-panel");
+    const form = root.querySelector("#portal-share-form");
+    const cancel = root.querySelector("#portal-share-cancel");
+    const status = root.querySelector("#portal-share-status");
+    if (!open || !panel || !form) return;
+
+    const setStatus = (message, isError = false) => {
+      if (!status) return;
+      status.textContent = message || "";
+      status.classList.toggle("is-error", Boolean(isError && message));
+    };
+
+    open.addEventListener("click", () => {
+      panel.hidden = false;
+      form.querySelector("#portal-share-email")?.focus();
+    });
+    cancel?.addEventListener("click", () => {
+      panel.hidden = true;
+      setStatus("");
+      form.reset();
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = String(new FormData(form).get("email") || "").trim();
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      setStatus("Sending…");
+      try {
+        await api(
+          `/api/portal/projects/${encodeURIComponent(projectCode)}/shoots/${encodeURIComponent(
+            shootDate
+          )}/share`,
+          { method: "POST", body: { email } }
+        );
+        form.reset();
+        setStatus("Report shared. The recipient will receive an email.");
+      } catch (error) {
+        setStatus(error.message || "The report could not be shared.", true);
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    });
   };
 
   const render = async () => {

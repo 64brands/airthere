@@ -1,0 +1,317 @@
+.share-body .button {
+  border-radius: 11px;
+  font-weight: 600;
+}
+
+.share-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 4.4rem;
+  padding: 0.9rem clamp(1.2rem, 4vw, 3rem);
+}
+
+.share-brand {
+  width: 132px;
+}
+
+.share-oversite {
+  height: 1.7rem;
+  width: auto;
+}
+
+.share-main {
+  padding: 0.5rem clamp(1.2rem, 4vw, 3rem) 3.5rem;
+}
+
+.share-card {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1.6rem 1.5rem 1.7rem;
+  background: var(--white);
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(20, 35, 61, 0.06);
+}
+
+.share-card.share-report {
+  max-width: 38rem;
+}
+
+.share-kicker {
+  margin: 0 0 0.7rem;
+  color: var(--orange);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.share-card h1 {
+  margin: 0 0 0.7rem;
+  color: var(--blue);
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+}
+
+.share-copy,
+.share-hint {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.share-error {
+  margin: 0 0 1rem;
+  color: var(--orange);
+  font-size: 0.95rem;
+}
+
+.share-otp-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.share-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.share-otp-form input {
+  width: 100%;
+  min-height: 56px;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(31, 51, 86, 0.14);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-align: center;
+}
+
+.share-otp-form input:focus {
+  border-color: var(--orange);
+  outline: none;
+}
+
+.share-otp-form .button,
+.share-actions .button,
+.share-actions .button-secondary {
+  min-height: 50px;
+  margin-top: 0.35rem;
+  border-radius: 11px;
+}
+
+.share-body .button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem 1.35rem;
+  border: 1px solid rgba(31, 51, 86, 0.16);
+  background: transparent;
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.share-body .button-secondary:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.share-resend {
+  margin-top: 0.9rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.share-resend:hover {
+  color: var(--orange);
+}
+
+.share-status {
+  min-height: 1.2rem;
+  margin: 0.4rem 0 0;
+  color: var(--blue);
+  font-size: 0.9rem;
+}
+
+.share-meta {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1.2rem 0 1.4rem;
+}
+
+.share-meta div {
+  margin: 0;
+}
+
+.share-meta dt {
+  color: var(--orange);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.share-meta dd {
+  margin: 0.2rem 0 0;
+  color: var(--blue);
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.share-actions .button,
+.share-actions .button-secondary {
+  margin: 0;
+  text-align: center;
+}
+
+.share-body.lightbox-open .share-header,
+.share-body.lightbox-open .share-main {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.lightbox-open {
+  overflow: hidden;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 18, 28, 0.96);
+}
+
+.lightbox-close,
+.lightbox-nav {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+}
+
+.lightbox-close {
+  top: 1rem;
+  right: 1rem;
+  font-size: 1.7rem;
+}
+
+.lightbox-nav {
+  top: 50%;
+  font-size: 1.9rem;
+  transform: translateY(-50%);
+}
+
+.lightbox-prev {
+  left: 0.85rem;
+}
+
+.lightbox-next {
+  right: 0.85rem;
+}
+
+.lightbox-nav[hidden] {
+  display: none;
+}
+
+.lightbox-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.7rem;
+  height: 100%;
+  padding: 3.4rem 4.2rem 1.4rem;
+  margin: 0;
+  pointer-events: none;
+}
+
+.lightbox-image {
+  max-width: min(92vw, 1280px);
+  max-height: calc(100vh - 7.2rem);
+  object-fit: contain;
+  pointer-events: auto;
+}
+
+.lightbox-caption {
+  color: rgba(255, 255, 255, 0.8);
+  pointer-events: auto;
+}
+
+.lightbox-seq {
+  color: var(--orange);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+@media (max-width: 700px) {
+  .share-header {
+    min-height: 4rem;
+    padding: 0.75rem 1.1rem;
+  }
+
+  .share-brand {
+    width: 112px;
+  }
+
+  .share-main {
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+  }
+
+  .share-actions .button,
+  .share-actions .button-secondary,
+  .share-otp-form .button {
+    width: 100%;
+  }
+
+  .lightbox-stage {
+    padding: 3.2rem 0.85rem 5rem;
+  }
+
+  .lightbox-nav {
+    top: auto;
+    bottom: 1rem;
+    transform: none;
+  }
+}

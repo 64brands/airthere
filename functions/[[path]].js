@@ -19,6 +19,7 @@ export const onRequest = async (context) => {
     url.pathname.startsWith("/admin/") ||
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/media/") ||
+    url.pathname.startsWith("/share/") ||
     url.pathname.startsWith("/portal/") ||
     url.pathname === "/assets/lightbox.js"
   ) {
