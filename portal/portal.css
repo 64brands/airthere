@@ -327,13 +327,26 @@ body.portal-body .skip-link:focus {
   color: var(--orange);
 }
 
-.portal-share-ok {
+.portal-share-status.is-success {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.portal-share-confirm {
   display: block;
+  text-align: left;
+}
+
+.portal-share-ok,
+.portal-share-sent {
+  display: block;
+}
+
+.portal-share-ok {
   font-weight: 700;
 }
 
 .portal-share-sent {
-  display: block;
   color: var(--muted);
   font-weight: 500;
 }
@@ -715,8 +728,15 @@ body.lightbox-open {
     flex: 1 1 auto;
   }
 
-  .portal-share-status {
+  .portal-share-form input[type="email"]::placeholder {
+    color: transparent;
+  }
+
+  .portal-share-status,
+  .portal-share-status.is-success {
+    display: block;
     text-align: left;
+    justify-content: flex-start;
   }
 
   .portal-login-form input[type="password"],

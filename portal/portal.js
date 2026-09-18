@@ -229,9 +229,9 @@
       status.classList.remove("is-error", "is-success");
       if (kind === "success") {
         status.classList.add("is-success");
-        status.innerHTML = `<span class="portal-share-ok">Report shared ✓</span><span class="portal-share-sent">Sent to ${escapeHtml(
+        status.innerHTML = `<span class="portal-share-confirm"><span class="portal-share-ok">Report shared ✓</span><span class="portal-share-sent">Sent to ${escapeHtml(
           message
-        )}</span>`;
+        )}</span></span>`;
         return;
       }
       if (kind === "error" && message) status.classList.add("is-error");
