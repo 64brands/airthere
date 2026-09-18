@@ -81,6 +81,11 @@ button, input, textarea { font: inherit; }
 }
 .site-header nav:not(.mobile-nav) a:hover::after { right: 0; }
 .menu-button, .mobile-nav { display: none; }
+.mobile-nav {
+  color: var(--white);
+  font-size: .92rem;
+  font-weight: 600;
+}
 
 .public-body {
   overflow-x: clip;
