@@ -188,13 +188,12 @@ const uploadShoot = async () => {
       );
     }
 
-    const completed = await api(`/api/admin/shoots/${started.shoot_id}/complete`, {
+    await api(`/api/admin/shoots/${started.shoot_id}/complete`, {
       method: "POST",
       body: {},
     });
-    let verified;
     try {
-      verified = await api(`/api/admin/shoots/${started.shoot_id}/verify`, {
+      await api(`/api/admin/shoots/${started.shoot_id}/verify`, {
         method: "POST",
         body: {},
       });
@@ -220,17 +219,9 @@ const uploadShoot = async () => {
     await loadAll();
     ingest.busy = false;
     try {
-      const standards = await generateMissingStandards(started.shoot_id);
+      await generateMissingStandards(started.shoot_id);
       location.hash = `shoots/view/${started.shoot_id}`;
-      setStatus(
-        standardImagesLabel({
-          standard_expected: standards?.standard_expected,
-          standard_ready: standards?.standard_ready,
-        }) ||
-          verified.message ||
-          completed.message ||
-          `${completed.image_count || total} originals in this capture`
-      );
+      setStatus("Capture saved.");
     } catch (error) {
       location.hash = `shoots/view/${started.shoot_id}`;
       setStatus(error.message, true);
@@ -276,6 +267,36 @@ const filenameDateFromShootDate = (shootDate) => {
 };
 
 const padSeq = (seq) => (seq > 999 ? String(seq) : String(seq).padStart(3, "0"));
+
+const imageRefLabel = (seq) => `Image Ref #${padSeq(seq)}`;
+
+const isStandardReady = (image) =>
+  Boolean(image?.web_key) && (image.web_status === "ready" || !image.web_status);
+
+const originalImageSrc = (shootId, imageId) =>
+  `/api/admin/shoots/${shootId}/originals/${imageId}`;
+
+const standardImageSrc = (shootId, imageId) =>
+  `/api/admin/shoots/${shootId}/standards/${imageId}`;
+
+const openShootLightbox = (kind, imageId) => {
+  const shoot = shootView.shoot;
+  if (!shoot) return;
+  const stored = shootView.images.filter((image) => image.stored);
+  const source = kind === "standard" ? stored.filter(isStandardReady) : stored;
+  const items = source.map((image) => ({
+    src:
+      kind === "standard"
+        ? standardImageSrc(shoot.id, image.id)
+        : originalImageSrc(shoot.id, image.id),
+    seq: image.seq,
+    counter: imageRefLabel(image.seq),
+    alt: imageRefLabel(image.seq),
+  }));
+  const index = source.findIndex((image) => image.id === imageId);
+  if (index < 0 || !items.length) return;
+  window.AirThereLightbox?.open(items, index);
+};
 
 const generatedFilename = (projectCode, shootDate, seq) =>
   `${projectCode}_${filenameDateFromShootDate(shootDate)}_${padSeq(seq)}.jpg`;
@@ -461,14 +482,6 @@ const addRecoverFiles = (fileList) => {
 const originalsCountLabel = (count) =>
   `${count} original${count === 1 ? "" : "s"} in this capture`;
 
-const standardImagesLabel = (shoot) => {
-  const expected = Number(shoot?.standard_expected || 0);
-  const ready = Number(shoot?.standard_ready || 0);
-  if (!expected) return "";
-  if (ready === expected) return `Standard images: ${ready} of ${expected} ready ✓`;
-  return `Standard images: ${ready} of ${expected} ready`;
-};
-
 const generateMissingStandards = async (shootId, retryFailed = false) => {
   const skipIds = [];
   let last = null;
@@ -480,9 +493,6 @@ const generateMissingStandards = async (shootId, retryFailed = false) => {
     const item = last.processed?.[0];
     if (!item) break;
     if (item.status === "failed") skipIds.push(item.image_id);
-    const expected = Number(last.standard_expected || 0);
-    const ready = Number(last.standard_ready || 0);
-    if (expected) setStatus(`Standard images: ${ready} of ${expected} ready`);
     if (Number(last.remaining_pending || 0) === 0) {
       if (!retryFailed) break;
       if (Number(last.standard_failed || 0) === 0) break;
@@ -568,13 +578,12 @@ const addToShoot = async () => {
       );
     }
 
-    const completed = await api(`/api/admin/shoots/${shoot.id}/complete`, {
+    await api(`/api/admin/shoots/${shoot.id}/complete`, {
       method: "POST",
       body: {},
     });
-    let verified;
     try {
-      verified = await api(`/api/admin/shoots/${shoot.id}/verify`, {
+      await api(`/api/admin/shoots/${shoot.id}/verify`, {
         method: "POST",
         body: {},
       });
@@ -600,7 +609,7 @@ const addToShoot = async () => {
     }
     await loadAll();
     await loadShootView(shoot.id);
-    setStatus(verified.message || completed.message || originalsCountLabel(shootView.images.length));
+    setStatus("Images added.");
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
@@ -711,9 +720,8 @@ const continueShootUpload = async () => {
     }
 
     await api(`/api/admin/shoots/${shoot.id}/complete`, { method: "POST", body: {} });
-    let verified;
     try {
-      verified = await api(`/api/admin/shoots/${shoot.id}/verify`, { method: "POST", body: {} });
+      await api(`/api/admin/shoots/${shoot.id}/verify`, { method: "POST", body: {} });
     } catch (error) {
       shootView.recoverFiles = [];
       shootView.recoverRejected = [];
@@ -736,7 +744,7 @@ const continueShootUpload = async () => {
     }
     await loadAll();
     await loadShootView(shoot.id);
-    setStatus(verified.message || originalsCountLabel(shootView.images.length));
+    setStatus("Missing originals uploaded.");
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
@@ -757,7 +765,7 @@ const verifyShootArchive = async () => {
   shootView.actionError = "";
   try {
     setStatus("Verifying original archive…");
-    const verified = await api(`/api/admin/shoots/${shoot.id}/verify`, {
+    await api(`/api/admin/shoots/${shoot.id}/verify`, {
       method: "POST",
       body: {},
     });
@@ -773,7 +781,7 @@ const verifyShootArchive = async () => {
     shootView.busy = false;
     await loadAll();
     await loadShootView(shoot.id);
-    setStatus(verified.message || originalsCountLabel(shootView.images.length));
+    setStatus("Original archive verified.");
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
@@ -797,7 +805,13 @@ const generateShootStandardsFromView = async () => {
     shootView.busy = false;
     await loadAll();
     await loadShootView(shoot.id);
-    setStatus(standardImagesLabel(result) || standardImagesLabel(shootView.shoot));
+    const expected = Number(result?.standard_expected || shootView.shoot?.standard_expected || 0);
+    const ready = Number(result?.standard_ready || shootView.shoot?.standard_ready || 0);
+    setStatus(
+      expected && ready === expected
+        ? "Report images are ready."
+        : "Report images are still being prepared."
+    );
   } catch (error) {
     shootView.busy = false;
     shootView.actionError = error.message;
@@ -1427,25 +1441,7 @@ const loadShootView = async (shootId) => {
       shootView.loading = false;
       render();
       if (shootView.shoot && !shootView.actionError) {
-        const shoot = shootView.shoot;
-        const imageCount = shootView.images.length;
-        if (!imageCount) {
-          setStatus("");
-        } else if (shoot.status === "verified") {
-          setStatus(
-            `${Number(shoot.verified_count || imageCount)} of ${
-              Number(shoot.expected_count || imageCount)
-            } originals verified`
-          );
-        } else {
-          const missing = missingShootImages().length;
-          const stored = imageCount - missing;
-          if (missing) {
-            setStatus(`${stored} of ${imageCount} originals uploaded · Incomplete`);
-          } else {
-            setStatus(originalsCountLabel(imageCount));
-          }
-        }
+        setStatus("");
       }
     }
   }
@@ -1471,7 +1467,7 @@ const renderShootView = (shootId) => {
 
   const shoot = shootView.shoot;
   titleEl.textContent = shoot ? `Capture · ${shoot.shoot_date_display}` : "Capture";
-  leadEl.textContent = "Original images from this capture.";
+  leadEl.textContent = "";
 
   if (shootView.loading) {
     app.innerHTML = `<section class="admin-panel"><p class="empty">Loading capture…</p></section>`;
@@ -1481,7 +1477,7 @@ const renderShootView = (shootId) => {
     app.innerHTML = `
       <section class="admin-panel">
         <p class="form-error">${escapeHtml(shootView.error || "Capture not found.")}</p>
-        <p><a class="text-link shoot-back" href="#shoots">Back to Captures</a></p>
+        <p><a class="shoot-back" href="#shoots">Back to Captures</a></p>
       </section>`;
     return;
   }
@@ -1511,30 +1507,32 @@ const renderShootView = (shootId) => {
     !showRecover && hasImages && shoot.status !== "verified" && shoot.status !== "published";
   const showAdd = !showRecover && shoot.status !== "published";
   const verifiedCount = Number(shoot.verified_count || 0);
-  const archiveBanner =
+  const archivePane =
     !hasImages
       ? ""
-      : shoot.status === "verified"
-      ? `<div class="archive-banner archive-banner-ok">
-          <p class="archive-kicker">Original archive verified ✓</p>
-          <p class="archive-count">${verifiedCount} of ${Number(
+      : shoot.status === "verified" || shoot.status === "published"
+      ? `<div class="capture-ops-archive">
+          <p class="capture-ops-kicker">Original archive</p>
+          <p class="capture-ops-status">${verifiedCount} of ${Number(
             shoot.expected_count || count
-          )} originals verified</p>
+          )} originals verified ✓</p>
           ${
             shoot.verified_at_display
-              ? `<p class="archive-date">${escapeHtml(shoot.verified_at_display)}</p>`
+              ? `<p class="capture-ops-date">${escapeHtml(shoot.verified_at_display)}</p>`
               : ""
           }
         </div>`
       : showRecover
-        ? `<div class="archive-banner archive-banner-warn">
-          <p class="archive-kicker">Archive incomplete</p>
-          <p class="archive-count">${count - missing.length} of ${count} originals uploaded</p>
+        ? `<div class="capture-ops-archive is-warn">
+          <p class="capture-ops-kicker">Original archive</p>
+          <p class="capture-ops-status">Archive incomplete</p>
+          <p class="capture-ops-date">${count - missing.length} of ${count} originals uploaded</p>
         </div>`
         : shoot.status === "uploaded" && verifiedCount > 0 && verifiedCount < count
-          ? `<div class="archive-banner archive-banner-warn">
-          <p class="archive-kicker">Archive incomplete</p>
-          <p class="archive-count">${verifiedCount} of ${count} originals verified</p>
+          ? `<div class="capture-ops-archive is-warn">
+          <p class="capture-ops-kicker">Original archive</p>
+          <p class="capture-ops-status">Archive incomplete</p>
+          <p class="capture-ops-date">${verifiedCount} of ${count} originals verified</p>
         </div>`
           : "";
   const showGenerateStandards =
@@ -1547,10 +1545,16 @@ const renderShootView = (shootId) => {
     Number(shoot.standard_expected || 0) === count &&
     Number(shoot.standard_ready || 0) === count &&
     Number(shoot.standard_failed || 0) === 0;
-  const standardsLine = hasImages ? standardImagesLabel(shoot) : "";
-  const standardsBanner = standardsLine
-    ? `<div class="archive-standards">
-        <p class="archive-count">${escapeHtml(standardsLine)}</p>
+  const reportPane = showReport
+    ? `<div class="capture-ops-report">
+        <img class="capture-ops-mark" src="/assets/oversite-logo.png" alt="" />
+        <p class="capture-ops-kicker">OVERSITE Report</p>
+        <p class="capture-ops-copy">Generate the Project Progress Report for this Capture.</p>
+        ${
+          reportReady
+            ? ""
+            : `<p class="capture-ops-note">Report images are still being prepared.</p>`
+        }
         ${
           showGenerateStandards
             ? `<button class="button-secondary" type="button" id="shoot-generate-standards" ${
@@ -1558,29 +1562,19 @@ const renderShootView = (shootId) => {
               }>Generate Standard Images</button>`
             : ""
         }
-        ${
-          showReport
-            ? `<button class="button" type="button" id="shoot-generate-report" ${
-                shootView.busy || !reportReady ? "disabled" : ""
-              }>Generate Report</button>`
-            : ""
-        }
-      </div>
-      ${
-        showReport && !reportReady
-          ? `<p class="hint">Generate Standard Images for every photograph before creating the PDF report.</p>`
-          : ""
-      }`
-    : showReport
-      ? `<div class="archive-standards">
-          <button class="button-secondary" type="button" id="shoot-generate-report" disabled>Generate Report</button>
-        </div>
-        <p class="hint">Generate Standard Images for every photograph before creating the PDF report.</p>`
+        <button class="button" type="button" id="shoot-generate-report" ${
+          shootView.busy || !reportReady ? "disabled" : ""
+        }>Generate Report</button>
+      </div>`
+    : "";
+  const opsCard =
+    archivePane || reportPane
+      ? `<div class="capture-ops${archivePane && reportPane ? "" : " is-single"}">${archivePane}${reportPane}</div>`
       : "";
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
-      <p><a class="text-link shoot-back" href="#shoots">Back to Captures</a></p>
+      <p><a class="shoot-back" href="#shoots">Back to Captures</a></p>
       <dl class="meta-grid shoot-meta">
         <div><dt>Client</dt><dd>${escapeHtml(shoot.customer_name)}</dd></div>
         <div><dt>Project</dt><dd>${escapeHtml(shoot.project_name)}</dd></div>
@@ -1599,8 +1593,7 @@ const renderShootView = (shootId) => {
             : ""
         }
       </dl>
-      ${archiveBanner}
-      ${standardsBanner}
+      ${opsCard}
       ${
         count
           ? `<div class="shoot-view-grid">${shootView.images
@@ -1613,11 +1606,11 @@ const renderShootView = (shootId) => {
                 type="button"
                 class="shoot-view-open"
                 data-lightbox-index="${lightboxIndexById.get(image.id)}"
-                aria-label="View ${escapeHtml(image.generated_filename)}"
+                aria-label="View ${escapeHtml(imageRefLabel(image.seq))}"
               >
                 <img
-                  src="/api/admin/shoots/${escapeHtml(shoot.id)}/originals/${escapeHtml(image.id)}"
-                  alt="${escapeHtml(image.generated_filename)}"
+                  src="${escapeHtml(originalImageSrc(shoot.id, image.id))}"
+                  alt="${escapeHtml(imageRefLabel(image.seq))}"
                   loading="lazy"
                   decoding="async"
                 />
@@ -1625,8 +1618,19 @@ const renderShootView = (shootId) => {
                   : `<div class="shoot-missing-thumb">Missing</div>`
               }
               <figcaption>
-                <span class="shoot-seq">${String(image.seq).padStart(3, "0")}</span>
-                <span class="shoot-filename">${escapeHtml(image.generated_filename)}</span>
+                <span class="shoot-ref">${escapeHtml(imageRefLabel(image.seq))}</span>
+                ${
+                  image.stored
+                    ? `<div class="shoot-view-actions">
+                  <button type="button" class="shoot-view-action" data-view-kind="original" data-image-id="${escapeHtml(
+                    image.id
+                  )}">View original</button>
+                  <button type="button" class="shoot-view-action" data-view-kind="standard" data-image-id="${escapeHtml(
+                    image.id
+                  )}" ${isStandardReady(image) ? "" : "disabled"}>View web image</button>
+                </div>`
+                    : ""
+                }
                 ${
                   canRemove
                     ? `<button type="button" class="shoot-remove" data-remove-image="${escapeHtml(
@@ -1970,20 +1974,21 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const viewKind = event.target.closest("[data-view-kind]");
+  if (viewKind && shootView.shoot && !viewKind.disabled) {
+    event.preventDefault();
+    openShootLightbox(viewKind.getAttribute("data-view-kind"), viewKind.getAttribute("data-image-id"));
+    return;
+  }
+
   const lightboxOpen = event.target.closest("[data-lightbox-index]");
   if (lightboxOpen && shootView.shoot) {
     event.preventDefault();
     const index = Number(lightboxOpen.getAttribute("data-lightbox-index"));
-    window.AirThereLightbox?.open(
-      shootView.images
-        .filter((image) => image.stored)
-        .map((image) => ({
-          src: `/api/admin/shoots/${shootView.shoot.id}/originals/${image.id}`,
-          seq: image.seq,
-          filename: image.generated_filename,
-        })),
-      index
-    );
+    const stored = shootView.images.filter((image) => image.stored);
+    const image = stored[index];
+    if (!image) return;
+    openShootLightbox("original", image.id);
     return;
   }
 

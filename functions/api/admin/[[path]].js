@@ -13,7 +13,7 @@ import {
   verifyOriginalArchive,
   loadShootImages,
 } from "../../_lib/ingest.js";
-import { generateShootStandards, standardSummary } from "../../_lib/derivatives.js";
+import { generateShootStandards, serveStandardObject, standardSummary } from "../../_lib/derivatives.js";
 import { generateShootReport } from "../../_lib/report.js";
 import {
   filenameDateFromShootDate,
@@ -677,6 +677,16 @@ const shoots = async (env, db, method, parts, request, url, actor) => {
       shootId: parts[1],
       retry: Boolean(body.retry),
       skipIds: Array.isArray(body.skip_ids) ? body.skip_ids : [],
+    });
+  }
+
+  if (parts.length === 4 && parts[2] === "standards") {
+    if (method !== "GET") return methodNotAllowed("GET");
+    return serveStandardObject({
+      db,
+      bucket: env.IMAGES,
+      shootId: parts[1],
+      imageId: parts[3],
     });
   }
 

@@ -17,6 +17,30 @@ export const standardStatus = (image) => {
   return null;
 };
 
+const safeFilename = (name) =>
+  String(name || "standard.jpg").replace(/[^\w.-]+/g, "_");
+
+export const serveStandardObject = async ({ db, bucket, shootId, imageId }) => {
+  if (!bucket) return json({ error: "Image archive is not bound." }, 503);
+  const image = await db
+    .prepare(`SELECT * FROM images WHERE id = ? AND shoot_id = ?`)
+    .bind(imageId, shootId)
+    .first();
+  if (!image || standardStatus(image) !== "ready" || !image.web_key) {
+    return json({ error: "Web image not found." }, 404);
+  }
+  const object = await bucket.get(image.web_key);
+  if (!object) return json({ error: "Web image is not in the archive." }, 404);
+  return new Response(object.body, {
+    headers: {
+      "Content-Type": JPEG_CONTENT_TYPE,
+      "Cache-Control": "private, max-age=120",
+      "Content-Disposition": `inline; filename="${safeFilename(image.generated_filename)}"`,
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+};
+
 export const standardSummary = (images = []) => {
   const expected = images.filter((image) => Boolean(image.verified_at)).length;
   const ready = images.filter((image) => standardStatus(image) === "ready").length;
