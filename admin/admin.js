@@ -796,9 +796,113 @@ const generateShootStandardsFromView = async () => {
   }
 };
 
-const generateShootReportFromView = async () => {
+const REPORT_FILENAME_FALLBACK = "OVERSITE_project_progress_report.pdf";
+const REPORT_BLOB_REVOKE_MS = 120000;
+
+const reportFilenameFromDisposition = (header, fallback = REPORT_FILENAME_FALLBACK) => {
+  const value = String(header || "");
+  const utf = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (utf) {
+    try {
+      return decodeURIComponent(utf[1].trim());
+    } catch {
+      /* use quoted filename */
+    }
+  }
+  const quoted = /filename="([^"]+)"/i.exec(value);
+  if (quoted) return quoted[1];
+  const plain = /filename=([^;]+)/i.exec(value);
+  if (plain) return plain[1].trim().replace(/^["']|["']$/g, "");
+  return fallback;
+};
+
+const revokeObjectUrlLater = (url) => {
+  window.setTimeout(() => URL.revokeObjectURL(url), REPORT_BLOB_REVOKE_MS);
+};
+
+const closeReportTab = (tab) => {
+  if (!tab || tab.closed) return;
+  try {
+    tab.close();
+  } catch {
+    /* ignore */
+  }
+};
+
+const writeReportWaitingPage = (tab) => {
+  if (!tab || tab.closed) return false;
+  try {
+    tab.document.open();
+    tab.document.write(`<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <title>Generating OVERSITE report</title>
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      color: #1f3356;
+      font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+      text-align: center;
+    }
+    main { padding: 3rem 1.5rem; max-width: 28rem; }
+    h1 { margin: 0 0 1.15rem; font-size: 1.85rem; font-weight: 800; letter-spacing: -0.03em; }
+    p { margin: 0 0 0.55rem; font-size: 1.02rem; line-height: 1.45; }
+    .note { color: #5d6570; font-size: 0.92rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AirThere</h1>
+    <p>Generating OVERSITE Project Progress Report&hellip;</p>
+    <p class="note">This may take a few seconds.</p>
+  </main>
+</body>
+</html>`);
+    tab.document.close();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const openReportTab = () => {
+  const tab = window.open("about:blank", "_blank");
+  if (!tab || tab.closed) return null;
+  writeReportWaitingPage(tab);
+  try {
+    tab.focus();
+  } catch {
+    /* ignore */
+  }
+  return tab;
+};
+
+const downloadReportBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  revokeObjectUrlLater(url);
+};
+
+const generateShootReportFromView = async (reportTab) => {
   const shoot = shootView.shoot;
-  if (!shoot || shootView.busy) return;
+  if (!shoot || shootView.busy) {
+    closeReportTab(reportTab);
+    return;
+  }
+  const tabOpened = Boolean(reportTab && !reportTab.closed);
   shootView.busy = true;
   shootView.actionError = "";
   try {
@@ -812,12 +916,31 @@ const generateShootReportFromView = async () => {
       throw new Error(data.error || "Report failed.");
     }
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener");
+    const filename = reportFilenameFromDisposition(
+      response.headers.get("Content-Disposition"),
+      REPORT_FILENAME_FALLBACK
+    );
+    if (tabOpened && reportTab && !reportTab.closed) {
+      const url = URL.createObjectURL(blob);
+      reportTab.location = url;
+      revokeObjectUrlLater(url);
+      shootView.busy = false;
+      render();
+      setStatus("Report opened.");
+      return;
+    }
+    try {
+      downloadReportBlob(blob, filename);
+    } catch {
+      throw new Error(
+        "Your browser blocked the report. Please allow pop-ups/downloads and try again."
+      );
+    }
     shootView.busy = false;
     render();
-    setStatus("Report opened.");
+    setStatus("Report downloaded.");
   } catch (error) {
+    closeReportTab(reportTab);
     shootView.busy = false;
     shootView.actionError = error.message;
     render();
@@ -1862,7 +1985,9 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "shoot-generate-report") {
     event.preventDefault();
-    generateShootReportFromView();
+    if (!shootView.shoot || shootView.busy) return;
+    const reportTab = openReportTab();
+    generateShootReportFromView(reportTab);
     return;
   }
 
