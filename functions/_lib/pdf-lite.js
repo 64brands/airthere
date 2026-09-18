@@ -1,3 +1,5 @@
+import { INTER_LIGHT, INTER_MEDIUM } from "./report-fonts.js";
+
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
 
@@ -149,8 +151,10 @@ export class PdfDocument {
     return (total * size) / 1000;
   }
 
-  drawText(text, x, y, size, { bold = false } = {}) {
-    const font = bold ? "F2" : "F1";
+  drawText(text, x, y, size, { bold = false, face = null } = {}) {
+    let font = bold ? "F2" : "F1";
+    if (face === "light") font = "F3";
+    else if (face === "medium") font = "F4";
     this.current.ops.push("BT");
     this.current.ops.push(`/${font} ${num(size)} Tf`);
     this.current.ops.push(`1 0 0 1 ${num(x)} ${num(y)} Tm`);
@@ -232,6 +236,28 @@ export class PdfDocument {
     const boldId = add(
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\n"
     );
+    const embedTrueType = (font) => {
+      const fileId = add(
+        `<< /Length ${font.bytes.length} /Length1 ${font.length1} /Filter /FlateDecode >>\nstream\n`,
+        font.bytes
+      );
+      const descId = add(
+        `<< /Type /FontDescriptor /FontName /${font.postScriptName} /Flags ${font.flags} /FontBBox [${font.bbox.join(
+          " "
+        )}] /ItalicAngle ${num(font.italicAngle)} /Ascent ${font.ascent} /Descent ${
+          font.descent
+        } /CapHeight ${font.capHeight} /StemV ${font.stemV} /FontFile2 ${fileId} 0 R >>\n`
+      );
+      return add(
+        `<< /Type /Font /Subtype /TrueType /BaseFont /${font.postScriptName} /FirstChar ${
+          font.firstChar
+        } /LastChar ${font.lastChar} /Widths [${font.widths.join(
+          " "
+        )}] /FontDescriptor ${descId} 0 R /Encoding /WinAnsiEncoding >>\n`
+      );
+    };
+    const lightId = embedTrueType(INTER_LIGHT);
+    const mediumId = embedTrueType(INTER_MEDIUM);
     const imageIds = this.images.map((image) => {
       if (image.kind === "flate") {
         let smask = "";
@@ -273,7 +299,7 @@ export class PdfDocument {
           )} >> >>\n`
         )
       );
-      const resources = `<< /Font << /F1 ${helvId} 0 R /F2 ${boldId} 0 R >> /XObject << ${xobjectEntries.join(
+      const resources = `<< /Font << /F1 ${helvId} 0 R /F2 ${boldId} 0 R /F3 ${lightId} 0 R /F4 ${mediumId} 0 R >> /XObject << ${xobjectEntries.join(
         " "
       )} >> /ProcSet [/PDF /Text /ImageC] >>`;
       const annots = annotIds.length ? `/Annots [${annotIds.map((id) => `${id} 0 R`).join(" ")}]` : "";
