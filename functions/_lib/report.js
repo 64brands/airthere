@@ -113,25 +113,25 @@ const drawCover = (pdf, airthere, oversite, meta) => {
   pdf.fillRect(margin, y, 42, 2.2);
   y -= 32;
   pdf.setFill(...NAVY);
-  pdf.drawText("Project Progress Report", margin, y, 22, { bold: true });
+  pdf.drawText("Project Progress Report", margin, y, 22);
   y -= 28;
   pdf.setStroke(...RULE);
   pdf.strokeLine(margin, y, width - margin, y, 0.5);
   y -= 34;
 
   const rows = [
-    ["Project", meta.projectName],
-    ["Client", meta.customerName],
-    ["Capture Date", meta.shootDateDisplay],
-    ["Project Location", meta.location || "—"],
-    ["GPS Coordinates", meta.gps || "—"],
+    ["Project", meta.projectName, 14],
+    ["Client", meta.customerName, 13],
+    ["Capture Date", meta.shootDateDisplay, 13],
+    ["Project Location", meta.location || "—", 13],
+    ["GPS Coordinates", meta.gps || "—", 13],
   ];
-  for (const [label, value] of rows) {
+  for (const [label, value, valueSize] of rows) {
     pdf.setFill(...ORANGE);
     pdf.drawText(label.toUpperCase(), margin, y, 8, { bold: true });
     y -= 16;
     pdf.setFill(...NAVY);
-    pdf.drawText(value, margin, y, 13, { bold: true });
+    pdf.drawText(value, margin, y, valueSize);
     y -= 28;
   }
 };
