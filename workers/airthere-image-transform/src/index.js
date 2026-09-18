@@ -1,8 +1,15 @@
 const JPEG_CONTENT_TYPE = "image/jpeg";
-const STANDARD_LONG_EDGE = 2000;
-const STANDARD_JPEG_QUALITY = 85;
-const MAX_STANDARD_SOURCE_BYTES = 20 * 1024 * 1024;
-const STANDARD_PATH = "/v1/standard";
+const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+
+export const STANDARD_LONG_EDGE = 2000;
+export const STANDARD_JPEG_QUALITY = 85;
+export const REPORT_LONG_EDGE = 1000;
+export const REPORT_JPEG_QUALITY = 72;
+
+const PROFILES = {
+  "/v1/standard": { longEdge: STANDARD_LONG_EDGE, quality: STANDARD_JPEG_QUALITY },
+  "/v1/report": { longEdge: REPORT_LONG_EDGE, quality: REPORT_JPEG_QUALITY },
+};
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -15,30 +22,30 @@ const json = (body, status = 200) =>
 
 const toStream = (bytes) => new Blob([bytes]).stream();
 
-const resizeOptions = (width, height) => {
+export const resizeOptions = (width, height, longEdge) => {
   const w = Number(width || 0);
   const h = Number(height || 0);
-  if (w < 1 || h < 1) return {};
-  if (w >= h && w > STANDARD_LONG_EDGE) return { width: STANDARD_LONG_EDGE };
-  if (h > w && h > STANDARD_LONG_EDGE) return { height: STANDARD_LONG_EDGE };
-  if (w === h && w > STANDARD_LONG_EDGE) return { width: STANDARD_LONG_EDGE };
-  return {};
+  const edge = Number(longEdge || 0);
+  if (w < 1 || h < 1 || edge < 1) return {};
+  if (Math.max(w, h) <= edge) return {};
+  if (w >= h) return { width: edge };
+  return { height: edge };
 };
 
-const standardJpeg = async (transform, source) => {
+const encodeJpeg = async (transform, source, { longEdge, quality }) => {
   const info = await transform.info(toStream(source));
   const sourceWidth = Number(info.width || 0);
   const sourceHeight = Number(info.height || 0);
-  const ops = resizeOptions(sourceWidth, sourceHeight);
+  const ops = resizeOptions(sourceWidth, sourceHeight, longEdge);
   let handle = transform.input(toStream(source));
   if (ops.width || ops.height) handle = handle.transform(ops);
   const encoded = await handle.output({
     format: JPEG_CONTENT_TYPE,
-    quality: STANDARD_JPEG_QUALITY,
+    quality,
   });
   const imageResponse = encoded.response();
   const webBytes = new Uint8Array(await imageResponse.arrayBuffer());
-  if (!webBytes.byteLength) throw new Error("Standard JPEG was empty.");
+  if (!webBytes.byteLength) throw new Error("Encoded JPEG was empty.");
 
   let webWidth = ops.width || sourceWidth;
   let webHeight = ops.height || sourceHeight;
@@ -62,7 +69,8 @@ const standardJpeg = async (transform, source) => {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== STANDARD_PATH) {
+    const profile = PROFILES[url.pathname];
+    if (request.method !== "POST" || !profile) {
       return json({ error: "Not found." }, 404);
     }
     if (!env.TRANSFORM) {
@@ -71,17 +79,17 @@ export default {
 
     const source = new Uint8Array(await request.arrayBuffer());
     if (!source.byteLength) {
-      return json({ error: "Original JPEG was empty." }, 400);
+      return json({ error: "Source JPEG was empty." }, 400);
     }
-    if (source.byteLength > MAX_STANDARD_SOURCE_BYTES) {
+    if (source.byteLength > MAX_SOURCE_BYTES) {
       return json(
-        { error: "Original is larger than the 20 MB Standard processing limit." },
+        { error: "Source is larger than the 20 MB processing limit." },
         413
       );
     }
 
     try {
-      const result = await standardJpeg(env.TRANSFORM, source);
+      const result = await encodeJpeg(env.TRANSFORM, source, profile);
       return new Response(result.bytes, {
         status: 200,
         headers: {

@@ -81,7 +81,7 @@ const glyphWidth = (widths, ch) => {
 
 export const jpegDimensions = (bytes) => {
   if (!bytes || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
-    throw new Error("Standard image is not a JPEG.");
+    throw new Error("Image is not a JPEG.");
   }
   let offset = 2;
   while (offset + 9 < bytes.length) {
@@ -184,10 +184,30 @@ export class PdfDocument {
     return image;
   }
 
-  drawImage(image, x, y, w, h) {
+  drawImage(image, x, y, w, h, { radius = 0 } = {}) {
     const name = `Im${image.id}`;
     this.current.xobjects.push({ name, image });
+    const r = Math.max(0, Math.min(Number(radius) || 0, w / 2, h / 2));
     this.current.ops.push("q");
+    if (r >= 0.5) {
+      const k = 0.5522847498307936;
+      const ox = r * k;
+      const oy = r * k;
+      const x2 = x + w;
+      const y2 = y + h;
+      this.current.ops.push(
+        `${num(x + r)} ${num(y)} m ` +
+          `${num(x2 - r)} ${num(y)} l ` +
+          `${num(x2 - r + ox)} ${num(y)} ${num(x2)} ${num(y + r - oy)} ${num(x2)} ${num(y + r)} c ` +
+          `${num(x2)} ${num(y2 - r)} l ` +
+          `${num(x2)} ${num(y2 - r + oy)} ${num(x2 - r + ox)} ${num(y2)} ${num(x2 - r)} ${num(y2)} c ` +
+          `${num(x + r)} ${num(y2)} l ` +
+          `${num(x + r - ox)} ${num(y2)} ${num(x)} ${num(y2 - r + oy)} ${num(x)} ${num(y2 - r)} c ` +
+          `${num(x)} ${num(y + r)} l ` +
+          `${num(x)} ${num(y + r - oy)} ${num(x + r - ox)} ${num(y)} ${num(x + r)} ${num(y)} c ` +
+          "h W n"
+      );
+    }
     this.current.ops.push(`${num(w)} 0 0 ${num(h)} ${num(x)} ${num(y)} cm`);
     this.current.ops.push(`/${name} Do`);
     this.current.ops.push("Q");
