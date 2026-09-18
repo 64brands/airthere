@@ -232,96 +232,110 @@ body.portal-body .skip-link:focus {
 .portal-gallery-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.65rem 1.25rem;
+  gap: 0.7rem 1.25rem;
   margin-bottom: 1.5rem;
 }
 
-.portal-share-open {
-  min-height: 2.6rem;
-  padding: 0.2rem 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 600;
-  cursor: pointer;
+.portal-gallery-head .portal-heading {
+  flex: 1 1 auto;
+  min-width: 8rem;
 }
 
-.portal-share-open:hover,
-.portal-share-cancel:hover {
-  color: var(--orange);
+.portal-share {
+  flex: 0 1 28.5rem;
+  min-width: 0;
+  max-width: 28.5rem;
+  margin-left: auto;
 }
 
-.portal-share-panel {
-  max-width: 28rem;
-  margin: 0 0 1.6rem;
-  padding: 1.15rem 1.2rem 1.2rem;
-  background: var(--white);
-  border-radius: var(--portal-radius-card);
-  box-shadow: var(--portal-shadow-soft);
+.portal-share-form {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .portal-share-label {
-  display: block;
-  margin-bottom: 0.4rem;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.portal-share-panel input[type="email"] {
-  width: 100%;
-  min-height: 48px;
-  padding: 0.7rem 0.85rem;
+.portal-share-form input[type="email"] {
+  flex: 1 1 12rem;
+  min-width: 0;
+  width: 16.5rem;
+  max-width: 100%;
+  min-height: 42px;
+  padding: 0.55rem 0.85rem;
   border: 1px solid rgba(31, 51, 86, 0.14);
   border-radius: var(--portal-radius-control);
   background: #fff;
   color: var(--blue);
+  font-family: inherit;
+  font-size: 0.92rem;
+  transition: border-color 0.18s ease;
 }
 
-.portal-share-panel input[type="email"]:focus {
+.portal-share-form input[type="email"]::placeholder {
+  color: rgba(31, 51, 86, 0.42);
+}
+
+.portal-share-form input[type="email"]:hover {
+  border-color: rgba(31, 51, 86, 0.24);
+}
+
+.portal-share-form input[type="email"]:focus {
   border-color: var(--orange);
   outline: none;
 }
 
-.portal-share-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.7rem 1rem;
-  margin-top: 0.85rem;
-}
-
-.portal-share-panel .button {
-  min-height: 46px;
+.portal-share-form .button {
+  flex: 0 0 auto;
+  min-height: 42px;
   margin: 0;
+  padding: 0.5rem 1.05rem;
   border-radius: var(--portal-radius-control);
+  font-size: 0.88rem;
+  white-space: nowrap;
 }
 
-.portal-share-cancel {
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
+.portal-share-form .button:disabled {
+  opacity: 0.72;
+  transform: none;
+  cursor: wait;
 }
 
 .portal-share-status {
-  min-height: 1.2rem;
-  margin: 0.7rem 0 0;
+  min-height: 0;
+  margin: 0.45rem 0 0;
   color: var(--blue);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  text-align: right;
 }
 
 .portal-share-status.is-error {
   color: var(--orange);
+}
+
+.portal-share-ok {
+  display: block;
+  font-weight: 700;
+}
+
+.portal-share-sent {
+  display: block;
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .portal-project-list,
@@ -661,17 +675,70 @@ body.lightbox-open {
     aspect-ratio: 4 / 3;
   }
 
+  .portal-gallery-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .portal-share {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+
+  .portal-share-form {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+
+  .portal-share-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0 0 0.35rem;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .portal-share-form input[type="email"],
+  .portal-share-form .button {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .portal-share-status {
+    text-align: left;
+  }
+
   .portal-login-form input[type="password"],
   .portal-body .portal-login-form .button,
-  .portal-share-open,
-  .portal-share-cancel,
-  .portal-share-panel input[type="email"],
-  .portal-share-panel .button {
+  .portal-share-form input[type="email"],
+  .portal-share-form .button {
     min-height: 56px;
   }
 }
 
 @media (max-width: 900px) {
+  .portal-share {
+    flex: 1 1 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+
+  .portal-share-form {
+    max-width: 28.5rem;
+    margin-left: auto;
+  }
+
   .lightbox-stage {
     padding: 3.4rem 0.85rem 5.2rem;
   }
