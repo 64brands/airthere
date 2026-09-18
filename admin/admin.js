@@ -837,7 +837,7 @@ const writeReportWaitingPage = (tab) => {
 <html lang="en-AU">
 <head>
   <meta charset="utf-8">
-  <title>Generating OVERSITE report</title>
+  <title>Generating Project Progress Report</title>
   <style>
     html, body { height: 100%; }
     body {
@@ -850,16 +850,21 @@ const writeReportWaitingPage = (tab) => {
       font-family: Inter, "Helvetica Neue", Arial, sans-serif;
       text-align: center;
     }
-    main { padding: 3rem 1.5rem; max-width: 28rem; }
-    h1 { margin: 0 0 1.15rem; font-size: 1.85rem; font-weight: 800; letter-spacing: -0.03em; }
-    p { margin: 0 0 0.55rem; font-size: 1.02rem; line-height: 1.45; }
-    .note { color: #5d6570; font-size: 0.92rem; }
+    main { padding: 3.5rem 1.5rem; max-width: 28rem; }
+    .mark {
+      display: block;
+      width: min(320px, 72vw);
+      height: auto;
+      margin: 0 auto 2.1rem;
+    }
+    p { margin: 0 0 0.55rem; font-size: 1.05rem; line-height: 1.45; font-weight: 600; }
+    .note { color: #5d6570; font-size: 0.92rem; font-weight: 400; }
   </style>
 </head>
 <body>
   <main>
-    <h1>AirThere</h1>
-    <p>Generating OVERSITE Project Progress Report&hellip;</p>
+    <img class="mark" src="${location.origin}/assets/oversite-logo.png" alt="OVERSITE by AirThere" />
+    <p>Generating Project Progress Report&hellip;</p>
     <p class="note">This may take a few seconds.</p>
   </main>
 </body>
