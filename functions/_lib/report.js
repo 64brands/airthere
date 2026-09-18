@@ -72,15 +72,19 @@ const loadJpeg = async (bucket, key) => {
 
 const drawFooter = (pdf, oversite, pageNumber, projectName, location) => {
   const { width } = PAGE_SIZE;
+  const margin = 42;
   pdf.setStroke(...RULE);
-  pdf.strokeLine(42, 40, width - 42, 40, 0.4);
+  pdf.strokeLine(margin, 40, width - margin, 40, 0.4);
   const markW = 74;
   const markH = markHeight(oversite, markW);
-  pdf.drawImage(oversite, 42, 22, markW, markH);
+  const baseline = 26;
+  pdf.drawImage(oversite, margin, baseline - markH * 0.45, markW, markH);
   const parts = [projectName, location, `Page ${pageNumber}`].filter(Boolean);
   const line = parts.join("  ·  ");
+  const size = 8;
+  const textX = width - margin - pdf.textWidth(line, size);
   pdf.setFill(...MUTED);
-  pdf.drawText(line, 42 + markW + 10, 26, 8);
+  pdf.drawText(line, Math.max(margin + markW + 18, textX), baseline, size);
 };
 
 const drawCover = (pdf, airthere, oversite, meta) => {
