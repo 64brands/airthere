@@ -178,25 +178,17 @@
         <h1 class="portal-heading">${escapeHtml(heading)}</h1>
         ${
           images.length
-            ? `<button class="portal-share-open" type="button" id="portal-share-open">Share Report</button>`
+            ? `<div class="portal-share">
+                <form class="portal-share-form" id="portal-share-form">
+                  <label class="portal-share-label" for="portal-share-email">Recipient email</label>
+                  <input id="portal-share-email" name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" required placeholder="Recipient email" />
+                  <button class="button" type="submit">Share Report</button>
+                </form>
+                <p class="portal-share-status" id="portal-share-status" role="status"></p>
+              </div>`
             : ""
         }
       </div>
-      ${
-        images.length
-          ? `<div class="portal-share-panel" id="portal-share-panel" hidden>
-              <form id="portal-share-form">
-                <label class="portal-share-label" for="portal-share-email">Recipient email</label>
-                <input id="portal-share-email" name="email" type="email" autocomplete="email" required />
-                <div class="portal-share-actions">
-                  <button class="button" type="submit">Share Report</button>
-                  <button class="portal-share-cancel" type="button" id="portal-share-cancel">Cancel</button>
-                </div>
-              </form>
-              <p class="portal-share-status" id="portal-share-status" role="status"></p>
-            </div>`
-          : ""
-      }
       ${
         images.length
           ? `<div class="portal-gallery">
@@ -227,27 +219,27 @@
   };
 
   const bindShareForm = (projectCode, shootDate) => {
-    const open = root.querySelector("#portal-share-open");
-    const panel = root.querySelector("#portal-share-panel");
     const form = root.querySelector("#portal-share-form");
-    const cancel = root.querySelector("#portal-share-cancel");
     const status = root.querySelector("#portal-share-status");
-    if (!open || !panel || !form) return;
+    const emailInput = root.querySelector("#portal-share-email");
+    if (!form) return;
 
-    const setStatus = (message, isError = false) => {
+    const setStatus = (message, kind = "") => {
       if (!status) return;
+      status.classList.remove("is-error", "is-success");
+      if (kind === "success") {
+        status.classList.add("is-success");
+        status.innerHTML = `<span class="portal-share-confirm"><span class="portal-share-ok">Report shared ✓</span><span class="portal-share-sent">Sent to ${escapeHtml(
+          message
+        )}</span></span>`;
+        return;
+      }
+      if (kind === "error" && message) status.classList.add("is-error");
       status.textContent = message || "";
-      status.classList.toggle("is-error", Boolean(isError && message));
     };
 
-    open.addEventListener("click", () => {
-      panel.hidden = false;
-      form.querySelector("#portal-share-email")?.focus();
-    });
-    cancel?.addEventListener("click", () => {
-      panel.hidden = true;
-      setStatus("");
-      form.reset();
+    emailInput?.addEventListener("input", () => {
+      if (status?.classList.contains("is-success")) setStatus("");
     });
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -263,9 +255,9 @@
           { method: "POST", body: { email } }
         );
         form.reset();
-        setStatus("Report shared. The recipient will receive an email.");
+        setStatus(email, "success");
       } catch (error) {
-        setStatus(error.message || "The report could not be shared.", true);
+        setStatus(error.message || "The report could not be shared.", "error");
       } finally {
         if (submit) submit.disabled = false;
       }
