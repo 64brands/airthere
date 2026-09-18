@@ -1148,6 +1148,44 @@ body.lightbox-open {
   max-width: 38rem;
 }
 
+.admin-advanced {
+  margin: 0.15rem 0 1.05rem;
+}
+
+.admin-advanced summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.admin-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-advanced summary::after {
+  content: "▸";
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+
+.admin-advanced[open] summary::after {
+  content: "▾";
+}
+
+.admin-advanced[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.admin-advanced input[readonly] {
+  color: var(--muted);
+  background: var(--admin-canvas);
+}
+
 .admin-footer {
   flex-shrink: 0;
   display: grid;

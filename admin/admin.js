@@ -256,6 +256,20 @@ const suggestCode = (name) =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
 
+const suggestSlug = (name) => {
+  let value = String(name || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-")
+    .slice(0, 48);
+  if (!/^[a-z]/.test(value)) value = `c-${value}`.replace(/^-+|-+$/g, "").slice(0, 48);
+  if (value.length < 2) return "client";
+  return value;
+};
+
 const filenameDateFromShootDate = (shootDate) => {
   const [year, month, day] = String(shootDate).split("-");
   return `${day}${month}${year.slice(2)}`;
@@ -1031,8 +1045,8 @@ const renderCustomers = () => {
                   <strong>${escapeHtml(customer.name)} ${
                     customer.status === "disabled" ? `<span class="badge">Disabled</span>` : ""
                   }</strong>
-                  <span>/${escapeHtml(customer.slug)} · ${
-                    customer.password_set ? "password set" : "password pending"
+                  <span>${
+                    customer.password_set ? "Password set" : "Password pending"
                   }</span>
                 </button>
               </li>`
@@ -1053,13 +1067,21 @@ const renderCustomers = () => {
               selected?.name || ""
             )}" />
           </label>
-          <label>
-            <span>Client slug</span>
-            <input type="text" name="slug" required maxlength="48" autocomplete="username" value="${escapeHtml(
-              selected?.slug || ""
-            )}" />
-          </label>
-          <p class="hint">Used in the portal URL, for example airthere.com.au/ovpg.</p>
+          <details class="admin-advanced">
+            <summary>Advanced</summary>
+            <label>
+              <span>Portal path</span>
+              <input
+                type="text"
+                name="slug"
+                required
+                maxlength="48"
+                autocomplete="off"
+                ${selected ? `data-locked="true"` : ""}
+                value="${escapeHtml(selected?.slug || suggestSlug(""))}"
+              />
+            </label>
+          </details>
           <label>
             <span>${
               selected?.password_set ? "Replace password" : "Set portal password"
@@ -1118,13 +1140,11 @@ const renderProjects = () => {
                 <button type="button" class="${
                   project.id === selected?.id ? "is-selected" : ""
                 }" data-open-project="${escapeHtml(project.id)}">
-                  <strong>${escapeHtml(project.name)} ${
-                    project.code_locked ? `<span class="badge">Code locked</span>` : ""
-                  }</strong>
-                  <span><code class="code-chip">${escapeHtml(project.code)}</code>${
+                  <strong>${escapeHtml(project.name)}</strong>
+                  <span>${
                     project.location
-                      ? ` · ${escapeHtml(project.location)}`
-                      : " · location pending"
+                      ? escapeHtml(project.location)
+                      : "Location pending"
                   }</span>
                 </button>
               </li>`
@@ -1151,19 +1171,22 @@ const renderProjects = () => {
               selected?.name || ""
             )}" />
           </label>
-          <label>
-            <span>Filename code</span>
-            <input type="text" name="code" required maxlength="80" placeholder="mount_whitsunday_stage_1" value="${escapeHtml(
-              selected?.code || ""
-            )}" ${selected?.code_locked ? "disabled" : ""} />
-          </label>
-          ${
-            selected?.code_locked
-              ? `<p class="hint">This code is locked because images already exist for the project.</p>`
-              : selected
-                ? `<p class="hint">Keep this code stable. It locks once images exist.</p>`
-                : `<p class="hint">Suggested from the project name. Confirm it before creating the project.</p>`
-          }
+          <details class="admin-advanced">
+            <summary>Advanced</summary>
+            <label>
+              <span>Archive code</span>
+              <input
+                type="text"
+                name="code"
+                required
+                maxlength="80"
+                autocomplete="off"
+                ${selected ? `data-locked="true"` : ""}
+                value="${escapeHtml(selected?.code || "")}"
+                ${selected?.code_locked ? "readonly" : ""}
+              />
+            </label>
+          </details>
           <label>
             <span>Project location</span>
             <input type="text" name="location" maxlength="200" placeholder="Mount Whitsunday, Airlie Beach QLD" value="${escapeHtml(
@@ -1209,7 +1232,6 @@ const renderProjects = () => {
             : selected
               ? `<dl class="meta-grid shoot-meta">
                   <div><dt>Name</dt><dd>${escapeHtml(selected.name)}</dd></div>
-                  <div><dt>Code</dt><dd>${escapeHtml(selected.code)}</dd></div>
                   <div><dt>Location</dt><dd>${escapeHtml(selected.location || "—")}</dd></div>
                   <div><dt>GPS</dt><dd>${escapeHtml(selected.gps_display || "—")}</dd></div>
                 </dl>`
@@ -1338,7 +1360,7 @@ const renderShoots = () => {
               : `<p class="hint">${
                   shootDate
                     ? `Capture Date: ${escapeHtml(displayShootDate(shootDate))}`
-                    : "Use the calendar or type YYYY-MM-DD. Historical dates are normal."
+                    : "Capture Date can be any past project date."
                 }</p>`
           }
           ${
@@ -1406,19 +1428,22 @@ const loadShootView = async (shootId) => {
       render();
       if (shootView.shoot && !shootView.actionError) {
         const shoot = shootView.shoot;
-        if (shoot.status === "verified") {
+        const imageCount = shootView.images.length;
+        if (!imageCount) {
+          setStatus("");
+        } else if (shoot.status === "verified") {
           setStatus(
-            `${Number(shoot.verified_count || shootView.images.length)} of ${
-              Number(shoot.expected_count || shootView.images.length)
+            `${Number(shoot.verified_count || imageCount)} of ${
+              Number(shoot.expected_count || imageCount)
             } originals verified`
           );
         } else {
           const missing = missingShootImages().length;
-          const stored = shootView.images.length - missing;
+          const stored = imageCount - missing;
           if (missing) {
-            setStatus(`${stored} of ${shootView.images.length} originals uploaded · Incomplete`);
+            setStatus(`${stored} of ${imageCount} originals uploaded · Incomplete`);
           } else {
-            setStatus(originalsCountLabel(shootView.images.length));
+            setStatus(originalsCountLabel(imageCount));
           }
         }
       }
@@ -1480,13 +1505,16 @@ const renderShootView = (shootId) => {
   const addReady = Boolean(addCount && !shootView.busy);
   const recoverReady = Boolean(recoverCount && missing.length && !shootView.busy);
   const canRemove = isSuperAdmin();
+  const hasImages = count > 0;
   const showRecover = missing.length > 0;
   const showVerify =
-    !showRecover && count > 0 && shoot.status !== "verified" && shoot.status !== "published";
+    !showRecover && hasImages && shoot.status !== "verified" && shoot.status !== "published";
   const showAdd = !showRecover && shoot.status !== "published";
   const verifiedCount = Number(shoot.verified_count || 0);
   const archiveBanner =
-    shoot.status === "verified"
+    !hasImages
+      ? ""
+      : shoot.status === "verified"
       ? `<div class="archive-banner archive-banner-ok">
           <p class="archive-kicker">Original archive verified ✓</p>
           <p class="archive-count">${verifiedCount} of ${Number(
@@ -1510,15 +1538,16 @@ const renderShootView = (shootId) => {
         </div>`
           : "";
   const showGenerateStandards =
+    hasImages &&
     Number(shoot.standard_expected || 0) > 0 &&
     Number(shoot.standard_ready || 0) < Number(shoot.standard_expected || 0);
-  const showReport = (shoot.status === "verified" || shoot.status === "published") && count > 0;
+  const showReport = (shoot.status === "verified" || shoot.status === "published") && hasImages;
   const reportReady =
     showReport &&
     Number(shoot.standard_expected || 0) === count &&
     Number(shoot.standard_ready || 0) === count &&
     Number(shoot.standard_failed || 0) === 0;
-  const standardsLine = standardImagesLabel(shoot);
+  const standardsLine = hasImages ? standardImagesLabel(shoot) : "";
   const standardsBanner = standardsLine
     ? `<div class="archive-standards">
         <p class="archive-count">${escapeHtml(standardsLine)}</p>
@@ -1609,7 +1638,7 @@ const renderShootView = (shootId) => {
             </figure>`
               )
               .join("")}</div>`
-          : `<p class="empty">No originals stored for this capture yet.</p>`
+          : `<p class="empty">No images uploaded yet</p>`
       }
       ${
         showRecover
@@ -2087,13 +2116,28 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches("#project-form [name=name]")) {
     const code = document.querySelector("#project-form [name=code]");
-    if (code && !code.dataset.touched) code.value = suggestCode(event.target.value);
+    if (code && !code.dataset.touched && !code.dataset.locked) code.value = suggestCode(event.target.value);
+  }
+  if (event.target.matches("#customer-form [name=name]")) {
+    const slug = document.querySelector("#customer-form [name=slug]");
+    if (slug && !slug.dataset.touched && !slug.dataset.locked) slug.value = suggestSlug(event.target.value);
   }
 });
 
 document.addEventListener("input", (event) => {
   if (event.target.matches("#project-form [name=code]")) {
     event.target.dataset.touched = "true";
+  }
+  if (event.target.matches("#customer-form [name=slug]")) {
+    event.target.dataset.touched = "true";
+  }
+  if (event.target.matches("#customer-form [name=name]")) {
+    const slug = document.querySelector("#customer-form [name=slug]");
+    if (slug && !slug.dataset.touched && !slug.dataset.locked) slug.value = suggestSlug(event.target.value);
+  }
+  if (event.target.matches("#project-form [name=name]")) {
+    const code = document.querySelector("#project-form [name=code]");
+    if (code && !code.dataset.touched && !code.dataset.locked) code.value = suggestCode(event.target.value);
   }
   if (event.target.id === "shoot-delete-confirm") {
     shootView.deleteConfirmText = event.target.value;
@@ -2169,7 +2213,7 @@ document.addEventListener("submit", async (event) => {
         passwordInput instanceof HTMLInputElement ? String(passwordInput.value || "") : "";
       const payload = {
         name: data.name,
-        slug: data.slug,
+        slug: data.slug || suggestSlug(data.name),
         status: data.status,
       };
       if (password) payload.password = password;
@@ -2208,7 +2252,7 @@ document.addEventListener("submit", async (event) => {
       const payload = {
         customer_id: data.customer_id,
         name: data.name,
-        code: data.code,
+        code: data.code || suggestCode(data.name),
         status: data.status || "active",
         location: data.location || "",
         latitude: data.latitude || "",
