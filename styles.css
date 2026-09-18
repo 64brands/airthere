@@ -60,7 +60,7 @@ button, input, textarea { font: inherit; }
 }
 .brand { width: 190px; }
 .brand img { filter: brightness(0) invert(1); }
-.site-header nav {
+.site-header nav:not(.mobile-nav) {
   display: flex;
   align-items: center;
   gap: 2.2rem;
@@ -68,8 +68,8 @@ button, input, textarea { font: inherit; }
   font-size: .92rem;
   font-weight: 600;
 }
-.site-header nav a:not(.button) { position: relative; }
-.site-header nav a:not(.button)::after {
+.site-header nav:not(.mobile-nav) a:not(.button) { position: relative; }
+.site-header nav:not(.mobile-nav) a:not(.button)::after {
   content: "";
   position: absolute;
   left: 0;
@@ -79,8 +79,88 @@ button, input, textarea { font: inherit; }
   background: var(--orange);
   transition: right .25s ease;
 }
-.site-header nav a:hover::after { right: 0; }
+.site-header nav:not(.mobile-nav) a:hover::after { right: 0; }
 .menu-button, .mobile-nav { display: none; }
+.mobile-nav {
+  color: var(--white);
+  font-size: .92rem;
+  font-weight: 600;
+}
+
+.public-body {
+  overflow-x: clip;
+}
+.public-body .skip-link {
+  border-radius: 8px;
+}
+.public-body .site-header {
+  gap: 1.5rem;
+}
+.public-body .primary-nav {
+  margin-left: auto;
+}
+.public-body .button {
+  border-radius: 11px;
+  font-weight: 600;
+}
+.public-body .eyebrow,
+.public-body .section-label,
+.public-body .number,
+.public-body .process li > span {
+  font-weight: 600;
+}
+.public-body h1,
+.public-body h2,
+.public-body h3 {
+  font-weight: 600;
+}
+.public-body .intro-content > p,
+.public-body .hero-copy {
+  font-weight: 400;
+}
+.public-body .capabilities {
+  gap: 1.15rem;
+}
+.public-body .capabilities article {
+  padding: 2.15rem 1.65rem 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.public-body .capabilities article:last-child {
+  border-right: 1px solid var(--line);
+}
+.public-body .oversite-mark {
+  width: min(100%, 21.5rem);
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 1.85rem;
+}
+.public-body .process {
+  gap: clamp(3.5rem, 8vw, 8rem);
+}
+.public-body .process h2 {
+  margin-bottom: 0;
+  font-size: clamp(1.85rem, 3.5vw, 3.2rem);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -.03em;
+}
+.public-body .process li {
+  padding: 2.4rem 0;
+}
+.public-body .process li:last-child {
+  padding-bottom: 0;
+}
+.public-body .audience-list span {
+  border-radius: 8px;
+  font-weight: 600;
+}
+.public-body .perspective-copy img {
+  border-radius: 14px;
+}
+.public-body .menu-button {
+  border-radius: 8px;
+}
 
 .button {
   display: inline-flex;
@@ -375,7 +455,7 @@ footer p { margin: 0; font-size: .9rem; }
 @media (max-width: 900px) {
   .site-header { height: 78px; }
   .brand { width: 155px; }
-  .site-header > nav { display: none; }
+  .site-header > nav:not(.mobile-nav) { display: none; }
   .menu-button {
     display: grid;
     gap: 7px;
@@ -399,6 +479,8 @@ footer p { margin: 0; font-size: .9rem; }
   }
   .mobile-nav[hidden] { display: none; }
   .mobile-nav a { padding: 1rem 0; border-bottom: 1px solid rgba(255,255,255,.15); }
+  .public-body .oversite-mark { width: min(100%, 18.5rem); margin-bottom: 1.5rem; }
+  .public-body .process h2 { font-size: clamp(1.7rem, 6vw, 2.4rem); }
   .hero-content { width: 100%; }
   .hero-index { display: none; }
   .intro, .process, .contact { grid-template-columns: 1fr; }
@@ -424,6 +506,9 @@ footer p { margin: 0; font-size: .9rem; }
   .field-row { grid-template-columns: 1fr; gap: 0; }
   .form-footer { align-items: flex-start; flex-direction: column; }
   .form-footer .button { width: 100%; }
+  .public-body .oversite-mark { width: min(100%, 16.5rem); }
+  .public-body .capabilities article { padding: 1.7rem 1.25rem 1.4rem; }
+  .public-body .process li { padding: 1.85rem 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
