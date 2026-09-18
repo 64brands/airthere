@@ -77,6 +77,35 @@ export const formatDisplayDate = (isoDate) => {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 };
 
+export const validateLocation = (value) => {
+  const location = clean(value, 200);
+  return { value: location || null };
+};
+
+const parseCoordinate = (value, min, max, label) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return { value: null };
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) {
+    return { error: `${label} must be a number between ${min} and ${max}.` };
+  }
+  return { value: number };
+};
+
+export const validateLatitude = (value) => parseCoordinate(value, -90, 90, "Latitude");
+export const validateLongitude = (value) => parseCoordinate(value, -180, 180, "Longitude");
+
+export const formatGps = (latitude, longitude) => {
+  if (latitude == null || longitude == null || latitude === "" || longitude === "") return "";
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+  const latHem = lat < 0 ? "S" : "N";
+  const lngHem = lng < 0 ? "W" : "E";
+  return `${Math.abs(lat).toFixed(6)}° ${latHem}, ${Math.abs(lng).toFixed(6)}° ${lngHem}`;
+};
+
 export const formatTimestamp = (iso) => {
   if (!iso) return "";
   const date = new Date(iso);
