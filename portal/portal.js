@@ -322,8 +322,7 @@
         button.addEventListener("click", () => {
           const row = button.closest(".portal-share-row");
           if (!row || row.querySelector(".portal-share-revoke-confirm")) return;
-          const meta = row.querySelector(".portal-share-row-meta");
-          if (meta) meta.hidden = true;
+          row.classList.add("is-confirming");
           const confirm = document.createElement("div");
           confirm.className = "portal-share-revoke-confirm";
           confirm.innerHTML = `<p>Revoke access to this shared report?</p>
@@ -334,7 +333,7 @@
           row.append(confirm);
           confirm.querySelector(".portal-share-revoke-no")?.addEventListener("click", () => {
             confirm.remove();
-            if (meta) meta.hidden = false;
+            row.classList.remove("is-confirming");
           });
           confirm.querySelector(".portal-share-revoke-yes")?.addEventListener("click", async () => {
             const yes = confirm.querySelector(".portal-share-revoke-yes");
@@ -347,7 +346,7 @@
               await refreshHistory();
             } catch (error) {
               confirm.remove();
-              if (meta) meta.hidden = false;
+              row.classList.remove("is-confirming");
               setStatus(error.message || "This share could not be revoked.", "error");
             }
           });

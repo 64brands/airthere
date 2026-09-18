@@ -443,6 +443,10 @@ body.portal-body .skip-link:focus {
   gap: 0.75rem;
 }
 
+.portal-share-row.is-confirming .portal-share-row-meta {
+  display: none;
+}
+
 .portal-share-state {
   color: var(--muted);
   font-size: 0.78rem;
