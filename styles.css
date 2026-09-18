@@ -99,6 +99,16 @@ button, input, textarea { font: inherit; }
 .public-body .primary-nav {
   margin-left: auto;
 }
+.public-body .nav-admin {
+  opacity: 0.72;
+  font-weight: 500;
+}
+.public-body .nav-admin:hover {
+  opacity: 1;
+}
+.public-body .primary-nav a.nav-admin::after {
+  display: none;
+}
 .public-body .button {
   border-radius: 11px;
   font-weight: 600;
