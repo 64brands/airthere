@@ -133,7 +133,7 @@ const uploadShoot = async () => {
   if (ingest.busy) return;
   const { customer, project, shootDate } = currentIngestSelection();
   if (!customer || !project || !shootDate || !ingest.files.length) {
-    setStatus("Choose the customer, project, Shoot Date and JPEGs first.", true);
+    setStatus("Choose the client, project, Capture Date and JPEGs first.", true);
     return;
   }
 
@@ -145,7 +145,7 @@ const uploadShoot = async () => {
   const failures = [];
 
   try {
-    setStatus("Preparing shoot records…");
+    setStatus("Preparing capture…");
     const started = await api("/api/admin/shoots/ingest", {
       method: "POST",
       body: {
@@ -229,7 +229,7 @@ const uploadShoot = async () => {
         }) ||
           verified.message ||
           completed.message ||
-          `${completed.image_count || total} originals in this shoot`
+          `${completed.image_count || total} originals in this capture`
       );
     } catch (error) {
       location.hash = `shoots/view/${started.shoot_id}`;
@@ -255,6 +255,20 @@ const suggestCode = (name) =>
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
+
+const suggestSlug = (name) => {
+  let value = String(name || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-")
+    .slice(0, 48);
+  if (!/^[a-z]/.test(value)) value = `c-${value}`.replace(/^-+|-+$/g, "").slice(0, 48);
+  if (value.length < 2) return "client";
+  return value;
+};
 
 const filenameDateFromShootDate = (shootDate) => {
   const [year, month, day] = String(shootDate).split("-");
@@ -293,10 +307,10 @@ const parseIsoShootDate = (value) => {
     parsed.getUTCMonth() !== month - 1 ||
     parsed.getUTCDate() !== day
   ) {
-    return { error: "Shoot Date must be a valid calendar date." };
+    return { error: "Capture Date must be a valid calendar date." };
   }
   if (year < 2000 || year > 2100) {
-    return { error: "Shoot Date is outside the supported range." };
+    return { error: "Capture Date is outside the supported range." };
   }
   return { value: date };
 };
@@ -342,7 +356,7 @@ const renderCalendar = (selectedIso) => {
     );
   }
   return `
-    <div class="ingest-calendar" role="dialog" aria-label="Shoot Date calendar">
+    <div class="ingest-calendar" role="dialog" aria-label="Capture Date calendar">
       <div class="cal-header">
         <button type="button" class="cal-nav" data-cal-shift="-1" aria-label="Previous month">‹</button>
         <p>${MONTH_NAMES[month - 1]} ${year}</p>
@@ -445,7 +459,7 @@ const addRecoverFiles = (fileList) => {
 };
 
 const originalsCountLabel = (count) =>
-  `${count} original${count === 1 ? "" : "s"} in this shoot`;
+  `${count} original${count === 1 ? "" : "s"} in this capture`;
 
 const standardImagesLabel = (shoot) => {
   const expected = Number(shoot?.standard_expected || 0);
@@ -609,7 +623,7 @@ const addToShoot = async () => {
 const removeShootImage = async (imageId) => {
   const shoot = shootView.shoot;
   if (!shoot || shootView.busy || !imageId) return;
-  if (!window.confirm("Remove this image from the Shoot?")) return;
+  if (!window.confirm("Remove this image from the Capture?")) return;
 
   shootView.busy = true;
   shootView.actionError = "";
@@ -639,7 +653,7 @@ const deleteShootFromView = async () => {
   if (submit) submit.disabled = true;
 
   try {
-    setStatus("Deleting shoot…");
+    setStatus("Deleting capture…");
     await api(`/api/admin/shoots/${shoot.id}`, {
       method: "DELETE",
       body: { confirm: "DELETE" },
@@ -1011,15 +1025,14 @@ const shootHistoryAction = (shoot) => {
 };
 
 const renderCustomers = () => {
-  titleEl.textContent = "Customers";
-  leadEl.textContent =
-    "Create and maintain customer records. Passwords are hashed and cannot be recovered — only replaced.";
+  titleEl.textContent = "Clients";
+  leadEl.textContent = "Select a client, or create a new one.";
   const selected = state.customers.find((item) => item.id === state.selectedCustomerId);
   const canManage = isSuperAdmin();
   app.innerHTML = `
     <div class="admin-layout">
       <section class="admin-panel">
-        <h2>All customers</h2>
+        <h2>All clients</h2>
         ${
           state.customers.length
             ? `<ul class="admin-list">${state.customers
@@ -1032,35 +1045,43 @@ const renderCustomers = () => {
                   <strong>${escapeHtml(customer.name)} ${
                     customer.status === "disabled" ? `<span class="badge">Disabled</span>` : ""
                   }</strong>
-                  <span>/${escapeHtml(customer.slug)} · ${
-                    customer.password_set ? "password set" : "password pending"
+                  <span>${
+                    customer.password_set ? "Password set" : "Password pending"
                   }</span>
                 </button>
               </li>`
                 )
                 .join("")}</ul>`
-            : `<p class="empty">No customers yet.</p>`
+            : `<p class="empty">No clients yet.</p>`
         }
       </section>
-      <section class="admin-panel">
-        <h2>${selected ? (canManage ? "Edit customer" : "Customer") : "New customer"}</h2>
+      <section class="admin-panel admin-panel-surface">
+        <h2>${selected ? (canManage ? "Edit client" : "Client") : "New client"}</h2>
         ${
           canManage
             ? `<form class="admin-form" id="customer-form">
           <input type="hidden" name="id" value="${escapeHtml(selected?.id || "")}" />
           <label>
-            <span>Customer name</span>
+            <span>Client name</span>
             <input type="text" name="name" required maxlength="160" value="${escapeHtml(
               selected?.name || ""
             )}" />
           </label>
-          <label>
-            <span>Customer slug</span>
-            <input type="text" name="slug" required maxlength="48" autocomplete="username" value="${escapeHtml(
-              selected?.slug || ""
-            )}" />
-          </label>
-          <p class="hint">Used in the portal URL, for example airthere.com.au/ovpg. Reserved website paths cannot be used.</p>
+          <details class="admin-advanced">
+            <summary>Advanced</summary>
+            <label>
+              <span>Portal path</span>
+              <input
+                type="text"
+                name="slug"
+                required
+                maxlength="48"
+                autocomplete="off"
+                ${selected ? `data-locked="true"` : ""}
+                value="${escapeHtml(selected?.slug || suggestSlug(""))}"
+              />
+            </label>
+          </details>
           <label>
             <span>${
               selected?.password_set ? "Replace password" : "Set portal password"
@@ -1074,7 +1095,7 @@ const renderCustomers = () => {
               ? "Leave blank to keep the current password."
               : selected
                 ? "A portal password of at least 8 characters is required before this portal can become available."
-                : "Leave blank to create the customer with a pending password. The portal cannot sign in until a password is set."
+                : "Leave blank to create the client with a pending password. The portal cannot sign in until a password is set."
           }</p>
           <label>
             <span>Status</span>
@@ -1083,9 +1104,9 @@ const renderCustomers = () => {
               <option value="disabled" ${selected?.status === "disabled" ? "selected" : ""}>Disabled</option>
             </select>
           </label>
-          <button class="button" type="submit">${selected ? "Save customer" : "Create customer"}</button>
+          <button class="button" type="submit">${selected ? "Save client" : "Create client"}</button>
         </form>`
-            : `<p class="empty">Customer records are view-only for this operator role.</p>`
+            : `<p class="empty">Client records are view-only for this operator role.</p>`
         }
       </section>
     </div>
@@ -1094,8 +1115,7 @@ const renderCustomers = () => {
 
 const renderProjects = () => {
   titleEl.textContent = "Projects";
-  leadEl.textContent =
-    "Projects belong to a customer. Location and GPS belong to the project and are used on progress reports.";
+  leadEl.textContent = "Choose a client, then create or update a project.";
   const selectedCustomerId = state.selectedCustomerId || state.customers[0]?.id || "";
   const visible = state.projects.filter(
     (project) => !selectedCustomerId || project.customer_id === selectedCustomerId
@@ -1108,7 +1128,7 @@ const renderProjects = () => {
       <section class="admin-panel">
         <h2>Projects</h2>
         <label>
-          <span>Customer</span>
+          <span>Client</span>
           <select id="project-customer-filter">${customerOptions(selectedCustomerId)}</select>
         </label>
         ${
@@ -1120,29 +1140,27 @@ const renderProjects = () => {
                 <button type="button" class="${
                   project.id === selected?.id ? "is-selected" : ""
                 }" data-open-project="${escapeHtml(project.id)}">
-                  <strong>${escapeHtml(project.name)} ${
-                    project.code_locked ? `<span class="badge">Code locked</span>` : ""
-                  }</strong>
-                  <span><code class="code-chip">${escapeHtml(project.code)}</code>${
+                  <strong>${escapeHtml(project.name)}</strong>
+                  <span>${
                     project.location
-                      ? ` · ${escapeHtml(project.location)}`
-                      : " · location pending"
+                      ? escapeHtml(project.location)
+                      : "Location pending"
                   }</span>
                 </button>
               </li>`
                 )
                 .join("")}</ul>`
-            : `<p class="empty">No projects for this customer.</p>`
+            : `<p class="empty">No projects for this client.</p>`
         }
       </section>
-      <section class="admin-panel">
+      <section class="admin-panel admin-panel-surface">
         <h2>${selected ? (canManage ? "Edit project" : "Project") : "New project"}</h2>
         ${
           canManage
             ? `<form class="admin-form" id="project-form">
           <input type="hidden" name="id" value="${escapeHtml(selected?.id || "")}" />
           <label>
-            <span>Customer</span>
+            <span>Client</span>
             <select name="customer_id" required ${selected ? "disabled" : ""}>${customerOptions(
               selected?.customer_id || selectedCustomerId
             )}</select>
@@ -1153,26 +1171,29 @@ const renderProjects = () => {
               selected?.name || ""
             )}" />
           </label>
-          <label>
-            <span>Filename-safe code</span>
-            <input type="text" name="code" required maxlength="80" placeholder="mount_whitsunday_stage_1" value="${escapeHtml(
-              selected?.code || ""
-            )}" ${selected?.code_locked ? "disabled" : ""} />
-          </label>
-          ${
-            selected?.code_locked
-              ? `<p class="hint">The filename code is locked because images already exist.</p>`
-              : selected
-                ? `<p class="hint">Keep the filename code stable. It becomes locked once images exist.</p>`
-                : `<p class="hint">Suggested automatically from the project name. Confirm or edit it before creating the project.</p>`
-          }
+          <details class="admin-advanced">
+            <summary>Advanced</summary>
+            <label>
+              <span>Archive code</span>
+              <input
+                type="text"
+                name="code"
+                required
+                maxlength="80"
+                autocomplete="off"
+                ${selected ? `data-locked="true"` : ""}
+                value="${escapeHtml(selected?.code || "")}"
+                ${selected?.code_locked ? "readonly" : ""}
+              />
+            </label>
+          </details>
           <label>
             <span>Project location</span>
             <input type="text" name="location" maxlength="200" placeholder="Mount Whitsunday, Airlie Beach QLD" value="${escapeHtml(
               selected?.location || ""
             )}" />
           </label>
-          <p class="hint">Human-readable site location for progress reports. Not a map.</p>
+          <p class="hint">Site location shown on progress reports.</p>
           <div class="field-row">
             <label>
               <span>Latitude</span>
@@ -1187,7 +1208,7 @@ const renderProjects = () => {
               )}" />
             </label>
           </div>
-          <p class="hint">Central GPS coordinates for the project site. Provide both, or leave both blank.</p>
+          <p class="hint">Central site coordinates. Enter both, or leave both blank.</p>
           ${
             selected
               ? `<label>
@@ -1211,7 +1232,6 @@ const renderProjects = () => {
             : selected
               ? `<dl class="meta-grid shoot-meta">
                   <div><dt>Name</dt><dd>${escapeHtml(selected.name)}</dd></div>
-                  <div><dt>Code</dt><dd>${escapeHtml(selected.code)}</dd></div>
                   <div><dt>Location</dt><dd>${escapeHtml(selected.location || "—")}</dd></div>
                   <div><dt>GPS</dt><dd>${escapeHtml(selected.gps_display || "—")}</dd></div>
                 </dl>`
@@ -1223,8 +1243,8 @@ const renderProjects = () => {
 };
 
 const renderShoots = () => {
-  titleEl.textContent = "Shoots";
-  leadEl.textContent = "Customer, project, Shoot Date, then JPEGs. Shoot Date is the day the photography happened.";
+  titleEl.textContent = "Captures";
+  leadEl.textContent = "Client, project, Capture Date, then JPEGs.";
   const selectedCustomerId = state.selectedCustomerId || state.customers[0]?.id || "";
   const customer = state.customers.find((item) => item.id === selectedCustomerId);
   const projects = state.projects.filter((project) => project.customer_id === selectedCustomerId);
@@ -1253,10 +1273,10 @@ const renderShoots = () => {
   app.innerHTML = `
     <div class="admin-layout">
       <section class="admin-panel">
-        <h2>Shoot history</h2>
+        <h2>Capture History</h2>
         <div class="field-row history-filters">
           <label>
-            <span>Customer</span>
+            <span>Client</span>
             <select id="shoot-customer-filter">${customerOptions(selectedCustomerId)}</select>
           </label>
           <label>
@@ -1287,15 +1307,15 @@ const renderShoots = () => {
               </li>`
                 )
                 .join("")}</ul>`
-            : `<p class="empty">No shoots for this project yet.</p>`
+            : `<p class="empty">No captures for this project yet.</p>`
         }
       </section>
-      <section class="admin-panel">
-        <h2>New shoot</h2>
+      <section class="admin-panel admin-panel-surface">
+        <h2>New Capture</h2>
         <form class="admin-form ingest-form" id="ingest-form">
           <div class="field-row">
             <label>
-              <span>Customer</span>
+              <span>Client</span>
               <select id="ingest-customer" required>${customerOptions(selectedCustomerId)}</select>
             </label>
             <label>
@@ -1314,7 +1334,7 @@ const renderShoots = () => {
           </div>
           <div class="ingest-date-wrap">
             <label>
-              <span>Shoot Date</span>
+              <span>Capture Date</span>
               <div class="ingest-date-control">
                 <input
                   type="text"
@@ -1339,24 +1359,24 @@ const renderShoots = () => {
               ? `<p class="form-error" role="alert">${escapeHtml(ingest.dateError)}</p>`
               : `<p class="hint">${
                   shootDate
-                    ? `Shoot Date: ${escapeHtml(displayShootDate(shootDate))}`
-                    : "Use the calendar or type YYYY-MM-DD. Historical dates are normal."
+                    ? `Capture Date: ${escapeHtml(displayShootDate(shootDate))}`
+                    : "Capture Date can be any past project date."
                 }</p>`
           }
           ${
             blockingShoot
-              ? `<p class="form-error" role="status">A Shoot already exists for this project on this date.</p>`
+              ? `<p class="form-error" role="status">A Capture already exists for this project on this date.</p>`
               : incompleteShoot
-                ? `<p class="form-error" role="status">This shoot is incomplete. <a class="text-link" href="#shoots/view/${escapeHtml(
+                ? `<p class="form-error" role="status">This capture is incomplete. <a class="text-link" href="#shoots/view/${escapeHtml(
                     existingShoot.id
-                  )}">Continue Upload</a> from the existing Shoot.</p>`
+                  )}">Continue Upload</a> from the existing Capture.</p>`
                 : ""
           }
           ${
             jpegCount
               ? `<div class="ingest-summary">
             <p><strong>${jpegCount} JPEG image${jpegCount === 1 ? "" : "s"}</strong> · ${escapeHtml(
-                displayShootDate(shootDate) || "set Shoot Date"
+                displayShootDate(shootDate) || "set Capture Date"
               )}</p>
             <p class="ingest-filenames">${previewNames.map((name) => escapeHtml(name)).join("<br />")}${
                 jpegCount > previewCount
@@ -1370,7 +1390,7 @@ const renderShoots = () => {
           <div class="ingest-drop${jpegCount ? " is-compact" : ""}" id="ingest-drop" tabindex="0">
             <input class="ingest-file-input" id="ingest-files" type="file" accept=".jpg,.jpeg,image/jpeg" multiple />
             <p class="ingest-drop-title">${jpegCount ? "Add more JPEG images" : "Drop JPEG images here"}</p>
-            <p class="ingest-drop-copy">or click to choose multiple files</p>
+            <p class="ingest-drop-copy">or tap to choose files</p>
           </div>
           ${
             ingest.rejected.length
@@ -1382,8 +1402,8 @@ const renderShoots = () => {
                   .join("")}</ul>`
               : ""
           }
-          <button class="button" type="button" id="ingest-upload" ${ready ? "" : "disabled"}>Upload Shoot</button>
-          <p class="hint">Original JPEGs stay private in the archive. Verification confirms every expected original is stored at the recorded size.</p>
+          <button class="button" type="button" id="ingest-upload" ${ready ? "" : "disabled"}>Upload Capture</button>
+          <p class="hint">Originals stay private. Verification confirms every expected image is stored.</p>
         </form>
       </section>
     </div>
@@ -1408,19 +1428,22 @@ const loadShootView = async (shootId) => {
       render();
       if (shootView.shoot && !shootView.actionError) {
         const shoot = shootView.shoot;
-        if (shoot.status === "verified") {
+        const imageCount = shootView.images.length;
+        if (!imageCount) {
+          setStatus("");
+        } else if (shoot.status === "verified") {
           setStatus(
-            `${Number(shoot.verified_count || shootView.images.length)} of ${
-              Number(shoot.expected_count || shootView.images.length)
+            `${Number(shoot.verified_count || imageCount)} of ${
+              Number(shoot.expected_count || imageCount)
             } originals verified`
           );
         } else {
           const missing = missingShootImages().length;
-          const stored = shootView.images.length - missing;
+          const stored = imageCount - missing;
           if (missing) {
-            setStatus(`${stored} of ${shootView.images.length} originals uploaded · Incomplete`);
+            setStatus(`${stored} of ${imageCount} originals uploaded · Incomplete`);
           } else {
-            setStatus(originalsCountLabel(shootView.images.length));
+            setStatus(originalsCountLabel(imageCount));
           }
         }
       }
@@ -1447,18 +1470,18 @@ const renderShootView = (shootId) => {
   }
 
   const shoot = shootView.shoot;
-  titleEl.textContent = shoot ? `Shoot · ${shoot.shoot_date_display}` : "Shoot";
-  leadEl.textContent = "Private originals for visual confirmation. These are the archive JPEGs, displayed smaller in the browser.";
+  titleEl.textContent = shoot ? `Capture · ${shoot.shoot_date_display}` : "Capture";
+  leadEl.textContent = "Original images from this capture.";
 
   if (shootView.loading) {
-    app.innerHTML = `<section class="admin-panel"><p class="empty">Loading shoot…</p></section>`;
+    app.innerHTML = `<section class="admin-panel"><p class="empty">Loading capture…</p></section>`;
     return;
   }
   if (shootView.error || !shoot) {
     app.innerHTML = `
       <section class="admin-panel">
-        <p class="form-error">${escapeHtml(shootView.error || "Shoot not found.")}</p>
-        <p><a class="text-link shoot-back" href="#shoots">Back to Shoots</a></p>
+        <p class="form-error">${escapeHtml(shootView.error || "Capture not found.")}</p>
+        <p><a class="text-link shoot-back" href="#shoots">Back to Captures</a></p>
       </section>`;
     return;
   }
@@ -1482,13 +1505,16 @@ const renderShootView = (shootId) => {
   const addReady = Boolean(addCount && !shootView.busy);
   const recoverReady = Boolean(recoverCount && missing.length && !shootView.busy);
   const canRemove = isSuperAdmin();
+  const hasImages = count > 0;
   const showRecover = missing.length > 0;
   const showVerify =
-    !showRecover && count > 0 && shoot.status !== "verified" && shoot.status !== "published";
+    !showRecover && hasImages && shoot.status !== "verified" && shoot.status !== "published";
   const showAdd = !showRecover && shoot.status !== "published";
   const verifiedCount = Number(shoot.verified_count || 0);
   const archiveBanner =
-    shoot.status === "verified"
+    !hasImages
+      ? ""
+      : shoot.status === "verified"
       ? `<div class="archive-banner archive-banner-ok">
           <p class="archive-kicker">Original archive verified ✓</p>
           <p class="archive-count">${verifiedCount} of ${Number(
@@ -1512,15 +1538,16 @@ const renderShootView = (shootId) => {
         </div>`
           : "";
   const showGenerateStandards =
+    hasImages &&
     Number(shoot.standard_expected || 0) > 0 &&
     Number(shoot.standard_ready || 0) < Number(shoot.standard_expected || 0);
-  const showReport = (shoot.status === "verified" || shoot.status === "published") && count > 0;
+  const showReport = (shoot.status === "verified" || shoot.status === "published") && hasImages;
   const reportReady =
     showReport &&
     Number(shoot.standard_expected || 0) === count &&
     Number(shoot.standard_ready || 0) === count &&
     Number(shoot.standard_failed || 0) === 0;
-  const standardsLine = standardImagesLabel(shoot);
+  const standardsLine = hasImages ? standardImagesLabel(shoot) : "";
   const standardsBanner = standardsLine
     ? `<div class="archive-standards">
         <p class="archive-count">${escapeHtml(standardsLine)}</p>
@@ -1533,7 +1560,7 @@ const renderShootView = (shootId) => {
         }
         ${
           showReport
-            ? `<button class="button-secondary" type="button" id="shoot-generate-report" ${
+            ? `<button class="button" type="button" id="shoot-generate-report" ${
                 shootView.busy || !reportReady ? "disabled" : ""
               }>Generate Report</button>`
             : ""
@@ -1553,11 +1580,11 @@ const renderShootView = (shootId) => {
 
   app.innerHTML = `
     <section class="admin-panel shoot-view">
-      <p><a class="text-link shoot-back" href="#shoots">Back to Shoots</a></p>
+      <p><a class="text-link shoot-back" href="#shoots">Back to Captures</a></p>
       <dl class="meta-grid shoot-meta">
-        <div><dt>Customer</dt><dd>${escapeHtml(shoot.customer_name)}</dd></div>
+        <div><dt>Client</dt><dd>${escapeHtml(shoot.customer_name)}</dd></div>
         <div><dt>Project</dt><dd>${escapeHtml(shoot.project_name)}</dd></div>
-        <div><dt>Shoot Date</dt><dd>${escapeHtml(shoot.shoot_date_display)} <span class="shoot-iso">${escapeHtml(
+        <div><dt>Capture Date</dt><dd>${escapeHtml(shoot.shoot_date_display)} <span class="shoot-iso">${escapeHtml(
           shoot.shoot_date
         )}</span></dd></div>
         <div><dt>Images</dt><dd>${count} original${count === 1 ? "" : "s"}</dd></div>
@@ -1611,7 +1638,7 @@ const renderShootView = (shootId) => {
             </figure>`
               )
               .join("")}</div>`
-          : `<p class="empty">No originals stored for this shoot yet.</p>`
+          : `<p class="empty">No images uploaded yet</p>`
       }
       ${
         showRecover
@@ -1690,7 +1717,7 @@ const renderShootView = (shootId) => {
             shootView.busy ? "disabled" : ""
           } />
           <p class="ingest-drop-title">${addCount ? "Add more JPEG images" : "Drop JPEG images here"}</p>
-          <p class="ingest-drop-copy">or click to choose multiple files</p>
+          <p class="ingest-drop-copy">or tap to choose files</p>
         </div>
         ${
           shootView.addRejected.length
@@ -1702,7 +1729,7 @@ const renderShootView = (shootId) => {
                 .join("")}</ul>`
             : ""
         }
-        <button class="button" type="button" id="shoot-add-upload" ${addReady ? "" : "disabled"}>Add to Shoot</button>
+        <button class="button" type="button" id="shoot-add-upload" ${addReady ? "" : "disabled"}>Add to Capture</button>
       </div>`
           : ""
       }
@@ -1712,8 +1739,8 @@ const renderShootView = (shootId) => {
         ${
           shootView.deleteOpen
             ? `<div class="shoot-delete-confirm">
-          <p class="shoot-delete-kicker">Delete Shoot</p>
-          <p class="shoot-delete-warning">This permanently removes the Shoot, all Image records, all full-resolution originals, and all Standard images. This cannot be undone.</p>
+          <p class="shoot-delete-kicker">Delete Capture</p>
+          <p class="shoot-delete-warning">This permanently removes the Capture, all original images, and all Standard images. This cannot be undone.</p>
           <label class="shoot-delete-label">
             <span>Type DELETE to confirm</span>
             <input
@@ -1739,12 +1766,12 @@ const renderShootView = (shootId) => {
               shootView.busy || String(shootView.deleteConfirmText || "").trim() !== "DELETE"
                 ? "disabled"
                 : ""
-            }>Delete Shoot</button>
+            }>Delete Capture</button>
           </div>
         </div>`
             : `<button class="shoot-delete-open" type="button" id="shoot-delete-open" ${
                 shootView.busy ? "disabled" : ""
-              }>Delete Shoot</button>`
+              }>Delete Capture</button>`
         }
       </div>`
           : ""
@@ -1810,6 +1837,8 @@ const boot = async () => {
     const me = await api("/api/admin/me");
     state.user = me.user || null;
     bindAccount();
+    const yearEl = document.querySelector("#admin-year");
+    if (yearEl) yearEl.textContent = String(new Date().getFullYear());
     await loadAll();
     render();
   } catch (error) {
@@ -2087,13 +2116,28 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches("#project-form [name=name]")) {
     const code = document.querySelector("#project-form [name=code]");
-    if (code && !code.dataset.touched) code.value = suggestCode(event.target.value);
+    if (code && !code.dataset.touched && !code.dataset.locked) code.value = suggestCode(event.target.value);
+  }
+  if (event.target.matches("#customer-form [name=name]")) {
+    const slug = document.querySelector("#customer-form [name=slug]");
+    if (slug && !slug.dataset.touched && !slug.dataset.locked) slug.value = suggestSlug(event.target.value);
   }
 });
 
 document.addEventListener("input", (event) => {
   if (event.target.matches("#project-form [name=code]")) {
     event.target.dataset.touched = "true";
+  }
+  if (event.target.matches("#customer-form [name=slug]")) {
+    event.target.dataset.touched = "true";
+  }
+  if (event.target.matches("#customer-form [name=name]")) {
+    const slug = document.querySelector("#customer-form [name=slug]");
+    if (slug && !slug.dataset.touched && !slug.dataset.locked) slug.value = suggestSlug(event.target.value);
+  }
+  if (event.target.matches("#project-form [name=name]")) {
+    const code = document.querySelector("#project-form [name=code]");
+    if (code && !code.dataset.touched && !code.dataset.locked) code.value = suggestCode(event.target.value);
   }
   if (event.target.id === "shoot-delete-confirm") {
     shootView.deleteConfirmText = event.target.value;
@@ -2169,7 +2213,7 @@ document.addEventListener("submit", async (event) => {
         passwordInput instanceof HTMLInputElement ? String(passwordInput.value || "") : "";
       const payload = {
         name: data.name,
-        slug: data.slug,
+        slug: data.slug || suggestSlug(data.name),
         status: data.status,
       };
       if (password) payload.password = password;
@@ -2179,7 +2223,7 @@ document.addEventListener("submit", async (event) => {
           throw new Error("Set a portal password before saving.");
         }
         if (password && password.length < 8) {
-          throw new Error("Customer password must be at least 8 characters.");
+          throw new Error("Portal password must be at least 8 characters.");
         }
         const saved = await api(`/api/admin/customers/${data.id}`, {
           method: "PATCH",
@@ -2189,7 +2233,7 @@ document.addEventListener("submit", async (event) => {
           throw new Error("Portal password was not saved. Try again.");
         }
         setStatus(
-          password ? "Portal password set." : "Customer saved."
+          password ? "Portal password set." : "Client saved."
         );
       } else {
         const created = await api("/api/admin/customers", { method: "POST", body: payload });
@@ -2199,8 +2243,8 @@ document.addEventListener("submit", async (event) => {
         }
         setStatus(
           created.customer.password_set
-            ? "Customer created."
-            : "Customer created. Portal password is still pending."
+            ? "Client created."
+            : "Client created. Portal password is still pending."
         );
       }
     }
@@ -2208,7 +2252,7 @@ document.addEventListener("submit", async (event) => {
       const payload = {
         customer_id: data.customer_id,
         name: data.name,
-        code: data.code,
+        code: data.code || suggestCode(data.name),
         status: data.status || "active",
         location: data.location || "",
         latitude: data.latitude || "",
