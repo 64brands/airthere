@@ -12,7 +12,7 @@ import { createShareCookie } from "../../_lib/session.js";
 export const onRequest = async (context) => {
   const url = new URL(context.request.url);
   if (isPreviewHost(url) || context.env.PREVIEW_LOCKDOWN === "true") {
-    return json({ error: "This report link is not available." }, 404);
+    return shareUnavailable();
   }
 
   const parts = splat(context.params);

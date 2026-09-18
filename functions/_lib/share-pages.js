@@ -51,8 +51,8 @@ export const shareMissingPage = () =>
     <main class="share-main">
       <section class="share-card">
         <p class="share-kicker">OVERSITE</p>
-        <h1>This report link is not available.</h1>
-        <p class="share-copy">The link may be incorrect, or this report is no longer available.</p>
+        <h1>This report is no longer available.</h1>
+        <p class="share-copy">Please contact the person who shared it with you for updated access.</p>
       </section>
     </main>
     `,

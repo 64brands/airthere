@@ -8,6 +8,7 @@ import { filenameDateFromShootDate } from "../_lib/names.js";
 import {
   SHARE_TOKEN_PATTERN,
   imageForShare,
+  isShareLive,
   issueShareOtp,
   loadShareByToken,
   requireShareSession,
@@ -35,7 +36,7 @@ const galleryPayload = (token, images) => ({
 
 const hasShareSession = async (request, env, share) => {
   const session = await readShareSession(request, env.SESSION_SECRET);
-  return Boolean(session && share && session.sid === share.id);
+  return Boolean(session && share && session.sid === share.id && isShareLive(share));
 };
 
 export const onRequest = async (context) => {
